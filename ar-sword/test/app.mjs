@@ -37,7 +37,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   page.on('console', (m) => m.type() === 'error' && console.log(`page error: ${m.text()}`));
   page.on('pageerror', (e) => console.log(`page error: ${e.message}`));
-  await page.goto('http://localhost:8125/site/index.html');
+  await page.goto(process.env.APP_URL ?? 'http://localhost:8125/site/index.html');
   await page.screenshot({ path: `${out}/start.png` });
   await page.click('#go');
   await page.waitForFunction(() => document.getElementById('status').textContent === 'SWORD DRAWN', null, { timeout: 15000 });
