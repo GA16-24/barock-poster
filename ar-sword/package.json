@@ -8,7 +8,8 @@
     "test:pose": "node test/pose.mjs",
     "test:app": "node test/app.mjs",
     "test:jitter": "node test/jitter.mjs",
-    "deploy": "npm run vendor && netlify deploy --prod --dir site"
+    "deploy": "npm run vendor && netlify deploy --prod --dir site",
+    "test:world": "node test/world.mjs"
   },
   "type": "module",
   "dependencies": {
