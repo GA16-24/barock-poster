@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#222">
+<script type="module">
+import { toGray, detectScreen } from '../site/detect.js';
+const load = (src) => new Promise((ok, err) => { const i = new Image(); i.onload = () => ok(i); i.onerror = err; i.src = src; });
+const S = 4284 / 1500, W = 360, H = 480;
+window.run = async (frames) => {
+  const out = [];
+  for (const f of frames) {
+    const img = await load(`photos/${f.photo}.jpg`);
+    const [cx, cy, size] = f.view, half = size / 2;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.drawImage(img, (cx - half * 0.75) * S, (cy - half) * S, size * 0.75 * S, size * S, 0, 0, W, H);
+    const t0 = performance.now();
+    const r = detectScreen(toGray(g.getImageData(0, 0, W, H).data, W * H), W, H);
+    const ms = performance.now() - t0;
+    if (r) { g.strokeStyle = '#0f0'; g.lineWidth = 3; g.beginPath(); r.quad.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.stroke(); }
+    g.fillStyle = r ? '#0f0' : '#f00'; g.font = 'bold 18px sans-serif'; g.fillText(`${f.photo} ${f.dist} ${ms.toFixed(0)}ms`, 8, 22);
+    document.body.append(c);
+    out.push({ photo: f.photo, dist: f.dist, ms: +ms.toFixed(1), hit: r && { aspect: +r.aspect.toFixed(2), fill: +r.fill.toFixed(2), contrast: +(r.bezel / r.inside).toFixed(2) } });
+  }
+  return out;
+};
+window.ready = true;
+</script>

@@ -1,0 +1,19 @@
+{
+  "name": "ar-sword",
+  "version": "1.0.0",
+  "description": "AR: a retro pixel sword appears to the right of the EMMETI thermostat",
+  "scripts": {
+    "vendor": "mkdir -p site/vendor && cp node_modules/three/build/three.module.js node_modules/three/build/three.core.js site/vendor/",
+    "test:detect": "node test/detect.mjs",
+    "test:pose": "node test/pose.mjs",
+    "test:app": "node test/app.mjs",
+    "test:jitter": "node test/jitter.mjs",
+    "deploy": "npm run vendor && netlify deploy --prod --dir site"
+  },
+  "type": "module",
+  "dependencies": {
+    "playwright": "^1.64.0",
+    "three": "^0.186.1"
+  },
+  "private": true
+}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a1c2c">
+<title>THERMO BLADE</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+</head>
+<body>
+<video id="video" playsinline muted autoplay></video>
+<canvas id="view"></canvas>
+<div id="status" hidden>SEARCHING…</div>
+<main id="start">
+  <h1>THERMO<br>BLADE</h1>
+  <p>Point your camera at the thermostat. Keep a little wall to its right in view.</p>
+  <button id="go" type="button">START</button>
+  <p id="error" role="alert" hidden></p>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>
