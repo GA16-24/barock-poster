@@ -1,10 +1,19 @@
 // Finds the thermostat's LCD: a dark, roughly 4:3 landscape quad inside a bright bezel.
-// Input is a grayscale frame; output is null or { quad: [TL, TR, BR, BL] in pixels, threshold, ... }.
+// Input is a grayscale frame; output is null or { quad: [TL, TR, BR, BL] in pixels, threshold, score }.
+import { homography } from './pose.js';
+import { TEMPLATE } from './template.js';
 
-const MIN_AREA = 0.004;
-const ASPECT = [0.9, 2.1];
+const MIN_PIXELS = 120;
+const ASPECT = [0.5, 2.2];
 const MIN_FILL = 0.8;
-const MIN_BEZEL_CONTRAST = 1.6;
+const MIN_BEZEL_CONTRAST = 1.3;
+// Normalized cross-correlation with the reference thermostat. In a 40 s walk-around video the neighbouring card reader
+// and a green door score up to 0.69, so a new track needs ACQUIRE; a blurred or oblique thermostat can dip to 0.6,
+// so an existing track continues at KEEP within NEAR LCD widths of the previous hit and at most RESIZE times its size.
+const ACQUIRE = 0.75;
+const KEEP = 0.6;
+const NEAR = 1.5;
+const RESIZE = 1.5;
 
 export function toGray(rgba, n) {
   const gray = new Uint8Array(n);
@@ -115,32 +124,80 @@ function refineQuad(gray, w, h, quad) {
   return ok ? refined : quad;
 }
 
-const THRESHOLDS = [60, 80, 100, 120, 140, 160];
+// The template covers the whole thermostat body plus a rim of wall, in LCD model meters.
+const GRID = 20, SUB = 3;
+const REGION = { x0: -0.05, x1: 0.05, y0: 0.041, y1: -0.059 };
+const reference = Uint8Array.from(atob(TEMPLATE), (c) => c.charCodeAt(0));
 
-export function detectScreen(gray, w, h, preferredThreshold) {
-  const found = findScreen(gray, w, h, preferredThreshold);
-  if (found) found.quad = refineQuad(gray, w, h, found.quad);
-  return found;
+export function templateSamples(gray, w, h, quad) {
+  const m = homography(quad);
+  if (!m) return null;
+  const out = new Float32Array(GRID * GRID);
+  for (let gy = 0; gy < GRID; gy++) for (let gx = 0; gx < GRID; gx++) {
+    let sum = 0;
+    for (let sy = 0; sy < SUB; sy++) for (let sx = 0; sx < SUB; sx++) {
+      const X = REGION.x0 + ((gx + (sx + 0.5) / SUB) / GRID) * (REGION.x1 - REGION.x0);
+      const Y = REGION.y0 + ((gy + (sy + 0.5) / SUB) / GRID) * (REGION.y1 - REGION.y0);
+      const d = m[2][0] * X + m[2][1] * Y + m[2][2];
+      const v = sample(gray, w, h, (m[0][0] * X + m[0][1] * Y + m[0][2]) / d, (m[1][0] * X + m[1][1] * Y + m[1][2]) / d);
+      if (Number.isNaN(v)) return null;
+      sum += v;
+    }
+    out[gy * GRID + gx] = sum / (SUB * SUB);
+  }
+  return out;
 }
 
-function findScreen(gray, w, h, preferredThreshold) {
+function ncc(a, b) {
+  const n = a.length;
+  let ma = 0, mb = 0;
+  for (let i = 0; i < n; i++) { ma += a[i]; mb += b[i]; }
+  ma /= n; mb /= n;
+  let ab = 0, aa = 0, bb = 0;
+  for (let i = 0; i < n; i++) { const da = a[i] - ma, db = b[i] - mb; ab += da * db; aa += da * da; bb += db * db; }
+  return aa && bb ? ab / Math.sqrt(aa * bb) : 0;
+}
+
+const THRESHOLDS = [60, 80, 100, 120, 140, 160, 180];
+
+// Candidate LCD quads, refined to sub-pixel edges and largest first, before template verification.
+export function findCandidates(gray, w, h, thresholds = [otsu(gray), ...THRESHOLDS]) {
   const label = new Int32Array(w * h);
   const stack = new Int32Array(w * h);
-  if (preferredThreshold != null) {
-    const found = components(gray, w, h, preferredThreshold, label, stack);
-    if (found) return found;
-  }
-  let best = null;
-  for (const threshold of [otsu(gray), ...THRESHOLDS]) {
+  const found = [];
+  for (const threshold of thresholds) {
     label.fill(0);
-    const found = components(gray, w, h, threshold, label, stack);
-    if (found && (!best || found.area > best.area)) best = found;
+    for (const c of components(gray, w, h, threshold, label, stack)) found.push({ ...c, quad: refineQuad(gray, w, h, c.quad) });
+  }
+  return found.sort((a, b) => b.area - a.area);
+}
+
+const center = (q) => [0, 1].map((k) => (q[0][k] + q[1][k] + q[2][k] + q[3][k]) / 4);
+
+function verified(gray, w, h, candidates, prior) {
+  const width = prior && dist(prior.quad[0], prior.quad[1]);
+  const near = prior && ((q) => {
+    const ratio = dist(q[0], q[1]) / width;
+    return dist(center(q), center(prior.quad)) < NEAR * width && ratio < RESIZE && ratio > 1 / RESIZE;
+  });
+  let best = null;
+  for (const c of candidates) {
+    const samples = templateSamples(gray, w, h, c.quad);
+    const score = samples ? ncc(samples, reference) : 0;
+    const ok = score >= ACQUIRE || (score >= KEEP && near?.(c.quad));
+    if (ok && (!best || score > best.score)) best = { ...c, score };
   }
   return best;
 }
 
+// prior is the previous frame's result, or null when nothing is being tracked.
+export function detectScreen(gray, w, h, prior) {
+  return (prior && verified(gray, w, h, findCandidates(gray, w, h, [prior.threshold]), prior))
+    ?? verified(gray, w, h, findCandidates(gray, w, h), prior);
+}
+
 function components(gray, w, h, threshold, label, stack) {
-  let best = null;
+  const found = [];
   for (let start = 0, id = 1; start < w * h; start++) {
     if (label[start] || gray[start] >= threshold) continue;
     let top = 0, count = 0, sumGray = 0;
@@ -164,7 +221,7 @@ function components(gray, w, h, threshold, label, stack) {
     }
     id++;
 
-    if (count < MIN_AREA * w * h) continue;
+    if (count < MIN_PIXELS) continue;
     const quad = [tl, tr, br, bl].map((p) => [p % w, (p / w) | 0]);
     const area = quadArea(quad);
     const aspect = (dist(quad[0], quad[1]) + dist(quad[3], quad[2])) / (dist(quad[0], quad[3]) + dist(quad[1], quad[2]));
@@ -174,7 +231,7 @@ function components(gray, w, h, threshold, label, stack) {
     const bezel = meanAlongQuad(gray, w, h, quad, 1.12);
     const inside = sumGray / count;
     if (bezel < inside * MIN_BEZEL_CONTRAST) continue;
-    if (!best || area > best.area) best = { quad, area, aspect, fill, bezel, inside, threshold };
+    found.push({ quad, area, aspect, fill, bezel, inside, threshold });
   }
-  return best;
+  return found;
 }

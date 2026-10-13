@@ -21,8 +21,10 @@ const browser = await chromium.launch({
   args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-video-capture=${y4m}`],
 });
 
-async function measure(rotationSmoothing) {
+async function measure(rotationSmoothing, gyro) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  // A phone held upright and still, as iOS reports it.
+  if (gyro) await page.addInitScript(() => setInterval(() => dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta: 90, gamma: 0 })), 16));
   if (rotationSmoothing !== undefined) {
     await page.route('**/site/main.js', async (route) => {
       const body = (await (await route.fetch()).text()).replace(/ROTATION_SMOOTHING = [\d.]+/, `ROTATION_SMOOTHING = ${rotationSmoothing}`);
@@ -53,7 +55,8 @@ async function measure(rotationSmoothing) {
 
 try {
   console.log('raw pose (no rotation smoothing):', await measure(1));
-  console.log('shipped smoothing:              ', await measure());
+  console.log('shipped smoothing, no gyro:     ', await measure());
+  console.log('shipped smoothing, upright gyro:', await measure(undefined, true));
 } finally {
   await browser.close();
   server.kill();

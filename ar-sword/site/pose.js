@@ -26,7 +26,8 @@ function solve8(m) {
   return m.map((row, i) => row[8] / row[i]);
 }
 
-export function poseFromQuad(quad, f, cx, cy) {
+// Maps LCD model coordinates (meters, y up) to image pixels.
+export function homography(quad) {
   const rows = [];
   MODEL.forEach(([X, Y], i) => {
     const [u, v] = quad[i];
@@ -34,8 +35,12 @@ export function poseFromQuad(quad, f, cx, cy) {
     rows.push([0, 0, 0, X, Y, 1, -v * X, -v * Y, v]);
   });
   const h = solve8(rows);
-  if (!h) return null;
-  const Hm = [[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1]];
+  return h && [[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1]];
+}
+
+export function poseFromQuad(quad, f, cx, cy) {
+  const Hm = homography(quad);
+  if (!Hm) return null;
 
   const col = (j) => [(Hm[0][j] - cx * Hm[2][j]) / f, (Hm[1][j] - cy * Hm[2][j]) / f, Hm[2][j]];
   const a1 = col(0), a2 = col(1), a3 = col(2);
