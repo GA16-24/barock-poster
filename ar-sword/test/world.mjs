@@ -11,9 +11,16 @@ mkdirSync(`${root}test/out`, { recursive: true });
 execFileSync('ffmpeg', ['-nostdin', '-v', 'error', '-y', '-i', `${root}test/photos/0442.jpg`, '-vf', 'scale=1080:1440', photo]);
 const server = spawn('python3', ['-m', 'http.server', '8127', '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 800));
+// Software rendering of the full scene is too slow for the video to keep pace with the gyro, so on macOS the
+// test draws with the real GPU, which needs a visible window.
+const gpu = process.platform === 'darwin';
 const browser = await chromium.launch({
   channel: 'chrome',
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'],
+  headless: !gpu,
+  args: [
+    ...(gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
+    '--autoplay-policy=no-user-gesture-required',
+  ],
 });
 
 const deg = Math.PI / 180;

@@ -55,15 +55,35 @@ const euler = new THREE.Euler();
 const zUpToYUp = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
 const screenTurn = new THREE.Quaternion();
 const Z = new THREE.Vector3(0, 0, 1), UP = new THREE.Vector3(0, 1, 0);
+// The shown video frame is older than the newest gyro reading (about 100 ms in test/world.mjs), so it gets the
+// rotation from when it was captured.
+const gyro = [];
+const GYRO_HISTORY_MS = 1000;
 addEventListener('deviceorientation', (e) => {
   if (e.beta == null) return;
   const rad = THREE.MathUtils.degToRad;
-  worldFromCamera ??= new THREE.Quaternion();
-  worldFromCamera.setFromEuler(euler.set(rad(e.beta), rad(e.alpha ?? 0), -rad(e.gamma), 'YXZ'))
+  worldFromCamera = new THREE.Quaternion().setFromEuler(euler.set(rad(e.beta), rad(e.alpha ?? 0), -rad(e.gamma), 'YXZ'))
     .multiply(zUpToYUp)
     .multiply(screenTurn.setFromAxisAngle(Z, -rad(screen.orientation?.angle ?? 0)));
+  gyro.push({ t: e.timeStamp, q: worldFromCamera });
+  while (gyro[0].t < e.timeStamp - GYRO_HISTORY_MS) gyro.shift();
 });
 const hold = () => (worldFromCamera ? HOLD_MS.gyro : HOLD_MS.none);
+
+function rotationAt(t, out) {
+  const i = gyro.findIndex((s) => s.t >= t);
+  if (i <= 0) return out.copy(gyro.at(i).q);
+  const a = gyro[i - 1], b = gyro[i];
+  return out.slerpQuaternions(a.q, b.q, (t - a.t) / (b.t - a.t));
+}
+
+// Chrome on Android stamps camera frames with the sensor time and Safari with their arrival from the camera.
+// Without a capture time (a canvas stream in desktop Chrome) the compositor handoff is the closest known time.
+let frameTime = null;
+video.requestVideoFrameCallback?.(function onFrame(_, m) {
+  frameTime = m.captureTime ?? m.presentationTime;
+  video.requestVideoFrameCallback(onFrame);
+});
 
 // The thermostat hangs level on a vertical wall, so only its heading comes from the noisy quad.
 const normal = new THREE.Vector3(), right = new THREE.Vector3(), basis = new THREE.Matrix4();
@@ -81,7 +101,7 @@ let videoW = 0, videoH = 0, frameW = 0, frameH = 0, focal = 0;
 let lastQuad = null;
 const target = new THREE.Matrix4();
 const targetPos = new THREE.Vector3(), targetQuat = new THREE.Quaternion(), targetScale = new THREE.Vector3();
-// pos and quat are the smoothed anchor in the world frame; frameRot is the camera rotation when the shown video frame arrived.
+// pos and quat are the smoothed anchor in the world frame; frameRot is the camera rotation when the shown video frame was captured.
 const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1);
 const frameRot = new THREE.Quaternion(), cameraFromWorld = new THREE.Quaternion();
 const viewPos = new THREE.Vector3(), viewQuat = new THREE.Quaternion();
@@ -136,7 +156,7 @@ function jumped(quad) {
 function detect(now) {
   if (video.currentTime === lastVideoTime) return false;
   lastVideoTime = video.currentTime;
-  if (worldFromCamera) frameRot.copy(worldFromCamera);
+  if (worldFromCamera) rotationAt(frameTime ?? performance.now(), frameRot);
   workCtx.drawImage(video, 0, 0, frameW, frameH);
   const gray = toGray(workCtx.getImageData(0, 0, frameW, frameH).data, frameW * frameH);
   const tracking = now - lastSeen < Math.min(hold(), TRACK_MS);
