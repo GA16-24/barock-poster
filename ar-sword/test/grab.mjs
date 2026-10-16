@@ -94,7 +94,6 @@ async function checkTracking(page, delegate) {
   check(delegate, `hand model loaded (delegate ${delegate})`);
   if (!delegate) return;
 
-  // Two full passes of the looping fake camera.
   await page.waitForFunction((n) => {
     let wraps = 0;
     for (let i = 1; i < log.length; i++) if (log[i].frame < log[i - 1].frame - 50) wraps++;

@@ -106,7 +106,6 @@ export function showCard({ title, text, facts, note }) {
   cardEl.scrollTop = 0;
 }
 export function hideCard() { cardEl.hidden = true; }
-export const cardOpen = () => !cardEl.hidden;
 export const onCardClose = (fn) => cardEl.querySelector('.close').addEventListener('click', fn);
 
 const MARGIN = 12, GAP = 12;

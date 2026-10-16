@@ -111,9 +111,8 @@ try {
   await page.waitForFunction(() => document.getElementById('status').textContent === 'GEFUNDEN', null, { timeout: 20000 });
   check(true, 'thermostat detected');
   await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 60000 });
-  const ids = expected;
-  await page.waitForFunction((ids) => ids.every((id) => globalThis.__ar.objects().find((o) => o.id === id)?.loaded), ids, { timeout: 60000 });
-  check(true, `all ${ids.length} expected objects loaded`);
+  await page.waitForFunction((ids) => ids.every((id) => globalThis.__ar.objects().find((o) => o.id === id)?.loaded), expected, { timeout: 60000 });
+  check(true, `all ${expected.length} expected objects loaded`);
 
   const panTo = async (name) => {
     await page.evaluate((y) => { globalThis.__yaw = y; }, PAN[name]);
@@ -126,7 +125,7 @@ try {
   for (const name of ['center', 'left', 'right']) {
     await panTo(name);
     const zone = { center: 'autoren', left: 'adel', right: 'volk' }[name];
-    const mine = ids.filter((id) => zoneOf(id) === zone && !inactive(id));
+    const mine = expected.filter((id) => zoneOf(id) === zone && !inactive(id));
     await page.waitForFunction((mine) => mine.every((id) => globalThis.__ar.objects().find((o) => o.id === id).shown), mine, { timeout: 20000 });
     const objects = (await page.evaluate(() => globalThis.__ar.objects())).filter((o) => mine.includes(o.id));
     const outside = objects.filter((o) => !(o.x > 0 && o.x < 390 && o.y > 0 && o.y < 844));
@@ -150,7 +149,7 @@ try {
   check(await page.isHidden('#card'), 'close button hides the card');
 
   const grabbed = pickFor(['head', 'map']);
-  const hand = { x: grabbed.u, y: grabbed.v, closed: false, grab: false, release: false, score: 0.9 };
+  const hand = { x: grabbed.u, y: grabbed.v, closed: false, grab: false, release: false };
   await page.evaluate((h) => globalThis.__ar.setHand(h), hand);
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${out}/hand-hover-${grabbed.id}.png` });
@@ -178,7 +177,7 @@ try {
     requestAnimationFrame(tick);
   }));
   const work = await page.evaluate(() => globalThis.__ar.frameMs());
-  console.log(`  frame: ${raf.toFixed(1)} ms between frames, ${work.toFixed(1)} ms app work per frame (${gpu ? "Metal GPU" : "swiftshader"}, not a phone)`);
+  console.log(`  frame: ${raf.toFixed(1)} ms between frames, ${work.toFixed(1)} ms app work per frame (${gpu ? 'Metal GPU' : "swiftshader"}, not a phone)`);
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 } catch (e) {
   failures.push(e.message);

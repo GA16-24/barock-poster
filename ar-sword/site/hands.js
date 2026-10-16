@@ -133,7 +133,6 @@ export async function createHands(video) {
       closed,
       grab: edge === 'grab',
       release: edge === 'release',
-      score: result.handedness[0][0].score,
     };
     return hand;
   }

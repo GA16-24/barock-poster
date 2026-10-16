@@ -12,7 +12,7 @@ export const stage = new THREE.Group();
 // the loaded model inside it is centered and scaled to `size`. Maps and books belong to an author and only
 // show while he is active (`show` eases between 0 and 1).
 // { id, kind: 'item' | 'head' | 'book' | 'map', author, size, rest: Vector3, yaw, holder, box: Box3 | null,
-//   mats: Material[], mixer, book, show, hover, lift, spin, phase, missing }
+//   mats: Material[], mixer, book, show, hover, lift, spin, phase }
 export const entries = [];
 
 // HTML labels follow these markers: { text, sub, kind: 'zone' | 'name', id, marker: Object3D }. A name plate's id is
@@ -27,15 +27,13 @@ let active = AUTHORS[0].id;
 let selected = null;
 let hovered = null;
 
-export const activeAuthor = () => active;
-
 function addEntry({ id, kind, author = null, size, at, yaw = 0 }) {
   const holder = new THREE.Group();
   holder.position.fromArray(at);
   stage.add(holder);
   const e = {
     id, kind, author, size, rest: holder.position.clone(), yaw, holder, box: null, mats: [], mixer: null, book: null,
-    show: kind === 'map' || kind === 'book' ? 0 : 1, hover: 0, lift: 0, spin: 0, phase: Math.random() * 6.28, missing: false,
+    show: kind === 'map' || kind === 'book' ? 0 : 1, hover: 0, lift: 0, spin: 0, phase: Math.random() * 6.28,
   };
   entries.push(e);
   return e;
@@ -89,7 +87,6 @@ async function loadModel(e, url) {
     gltf = await loader.loadAsync(url);
   } catch {
     console.warn(`Modell fehlt, wird übersprungen: ${url}`);
-    e.missing = true;
     return;
   }
   const model = gltf.scene;
@@ -121,7 +118,7 @@ const urlOf = (e) => (e.kind === 'item' ? ITEMS.find((i) => i.id === e.id).model
 // Resolves once the first view (props, heads, the active map) is loaded; the other maps follow in the background.
 export async function loadScene(onProgress) {
   const isFirst = (e) => e.kind === 'item' || e.kind === 'head' || (e.kind === 'map' && e.author.id === active);
-  const first = entries.filter((e) => e.kind !== 'book' && isFirst(e));
+  const first = entries.filter(isFirst);
   let done = 0;
   onProgress(done, first.length);
   await Promise.all(first.map((e) => loadModel(e, urlOf(e)).then(() => onProgress(++done, first.length))));

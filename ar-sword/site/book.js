@@ -41,7 +41,7 @@ function paper(title) {
     ctx.fillStyle = '#3a2a1a';
     ctx.textAlign = 'center';
     ctx.font = `italic ${w * 0.075}px "Iowan Old Style", Palatino, Georgia, serif`;
-    const words = (title ?? '').split(' ');
+    const words = title.split(' ');
     let line = '', y = h * 0.3;
     for (const word of words) {
       if (ctx.measureText(`${line} ${word}`).width > w * 0.78 && line) {
@@ -58,8 +58,7 @@ function paper(title) {
 
 export function buildBook({ size, cover, title }) {
   const h = size, w = size * ASPECT, t = size * THICK, b = size * BOARD;
-  const leatherMap = canvasTexture(256, 356, leather);
-  const leatherMat = new THREE.MeshStandardMaterial({ map: leatherMap, roughness: 0.62, metalness: 0.05 });
+  const leatherMat = new THREE.MeshStandardMaterial({ map: canvasTexture(256, 356, leather), roughness: 0.62, metalness: 0.05 });
   const edgeMat = new THREE.MeshStandardMaterial({ color: 0xe6d6b0, roughness: 0.95 });
   const pageMat = new THREE.MeshStandardMaterial({ map: canvasTexture(256, 356, paper(title)), roughness: 0.9 });
   const endpaperMat = new THREE.MeshStandardMaterial({ color: 0x7a3b22, roughness: 0.8 });
@@ -76,7 +75,6 @@ export function buildBook({ size, cover, title }) {
   );
   block.position.x = b * 0.25;
 
-  // The hinge sits at the spine so the board swings around its left edge.
   const hinge = new THREE.Group();
   hinge.position.set(-w / 2, 0, t / 2 - b / 2);
   const front = new THREE.Mesh(
@@ -86,7 +84,6 @@ export function buildBook({ size, cover, title }) {
   front.position.x = w / 2;
   hinge.add(front);
 
-  // The title page sits in a gilt frame on the front board, like a frontispiece pasted into the leather.
   const plateMat = new THREE.MeshStandardMaterial({ color: 0xe8dcc0, roughness: 0.85 });
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.74, h * 0.78), plateMat);
   plate.position.set(w / 2, 0, b / 2 + 0.0005);
@@ -109,13 +106,8 @@ export function buildBook({ size, cover, title }) {
   book.add(back, spine, block, hinge);
   book.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
 
-  let open = 0;
   return {
     object: book,
-    setOpen(v) {
-      open = v;
-      hinge.rotation.y = -open * 1.1;
-    },
-    get open() { return open; },
+    setOpen(v) { hinge.rotation.y = -v * 1.1; },
   };
 }

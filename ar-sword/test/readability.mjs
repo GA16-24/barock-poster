@@ -23,14 +23,14 @@ function numberSyllables(n) {
   return s + (n % 10 ? UNITS[n % 10] + 1 : 0) + 2;
 }
 
-export function syllables(word) {
+function syllables(word) {
   if (/^\d+$/.test(word)) return numberSyllables(Number(word));
   const groups = word.toLowerCase().match(/[aeiouäöüy]+/g) ?? [];
   const count = groups.reduce((sum, g) => sum + g.match(VOWEL_UNITS).length, 0);
   return Math.max(1, count);
 }
 
-export function analyze(text) {
+function analyze(text) {
   const sentences = text.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
   const words = (s) => s.match(/[\p{L}\d]+(?:[-'][\p{L}\d]+)*/gu) ?? [];
   const lengths = sentences.map((s) => words(s).length);

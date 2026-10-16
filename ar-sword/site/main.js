@@ -274,7 +274,7 @@ globalThis.__ar = {
   objects: () => entries.map((e) => {
     const [u, v] = uvOf(e.holder) ?? [NaN, NaN];
     const [x, y] = ui.toScreen(u, v);
-    return { id: e.id, kind: e.kind, u, v, x, y, shown: e.holder.visible && e.show > 0.9, loaded: !!e.box, missing: e.missing };
+    return { id: e.id, kind: e.kind, u, v, x, y, shown: e.holder.visible && e.show > 0.9, loaded: !!e.box };
   }),
 };
 
