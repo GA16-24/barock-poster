@@ -1,6 +1,5 @@
-// Card content for each grabbable id, from data/texts.json and the head credits.
+// Card content for each grabbable id, from data/texts.json.
 let texts = {};
-const reconstructed = new Set();
 
 async function json(url) {
   try {
@@ -15,12 +14,6 @@ async function json(url) {
 
 export async function loadInfo() {
   texts = (await json('data/texts.json')) ?? {};
-  for (const c of (await json('data/credits/assets.json')) ?? []) {
-    if (!c.reconstruction) continue;
-    reconstructed.add(c.id);
-    const head = c.file?.match(/heads\/([^/.]+)\.glb$/)?.[1];
-    if (head) reconstructed.add(head);
-  }
 }
 
 const words = (v) => (typeof v === 'string' ? v : v?.title ?? '');
@@ -34,7 +27,7 @@ export function infoFor(e) {
     const werk = words(t.werk) || words(texts[`${e.id}-werk`]);
     const ort = words(t.ort) || words(texts[`${e.id}-ort`]);
     card.facts = [['Lebte', e.author.life], ['Werk', werk], ['Ort', ort]].filter(([, v]) => v);
-    if (reconstructed.has(e.id)) card.note = 'Rekonstruktion: kein echtes Bild überliefert';
+    if (e.author.reconstruction) card.note = 'Rekonstruktion: kein echtes Bild überliefert';
   }
   return card;
 }

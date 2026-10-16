@@ -28,6 +28,7 @@ export const ITEMS = [
   { id: 'spinnrad', zone: 'volk', model: 'models/volk/spinnrad.glb', size: 0.26, at: [0.8, 0.52, 0.15] },
 ];
 
+// No portrait of Bidermann survives, so his head is a reconstruction (`reconstruction: true`) and says so.
 // Grabbing a head shows the author text and switches the map below the thermostat to that author's place.
 // The book (`${id}-werk`) and the map (`${id}-ort`) are grabbable too.
 export const AUTHORS = [
@@ -37,7 +38,7 @@ export const AUTHORS = [
     at: [-0.26, 0.3, 0.15],
   },
   {
-    id: 'bidermann', name: 'Jakob Bidermann', life: '1578–1639',
+    id: 'bidermann', name: 'Jakob Bidermann', life: '1578–1639', reconstruction: true,
     head: 'models/heads/bidermann.glb', cover: 'img/works/bidermann.jpg', map: 'models/maps/muenchen.glb',
     at: [0, 0.3, 0.15],
   },

@@ -109,7 +109,7 @@ for (const a of AUTHORS) {
   addEntry({ id: `${a.id}-ort`, kind: 'map', author: a, size: MAP.size, at: MAP.at });
   const b = addEntry({ id: `${a.id}-werk`, kind: 'book', author: a, size: BOOK.size, at: BOOK.at, yaw: BOOK_YAW });
   b.book = buildBook({ size: BOOK.size, cover: a.cover, title: a.name });
-  addMarker(a.name.split(' ').at(-1), a.life, 'name', [a.at[0], a.at[1] - HEAD_SIZE * 0.74, a.at[2]], a.id);
+  addMarker(a.name.split(' ').at(-1), a.reconstruction ? `${a.life}\nRekonstruktion` : a.life, 'name', [a.at[0], a.at[1] - HEAD_SIZE * 0.74, a.at[2]], a.id);
 }
 for (const z of Object.values(ZONES)) addMarker(z.title, '', 'zone', [z.x, 0.76, 0.05]);
 
