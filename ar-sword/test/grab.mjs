@@ -69,8 +69,12 @@ const PORT = 8134;
 const server = spawn('python3', ['-m', 'http.server', `${PORT}`, '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 800));
 
+// On macOS the hand model runs on the real GPU; on swiftshader one inference can take 200 to 400 ms under load,
+// slow enough to lose a fist between samples.
+const gpu = process.platform === 'darwin' && !process.env.HANDS_NO_WEBGL;
 const browser = await chromium.launch({
   channel: 'chrome',
+  headless: !gpu,
   args: [
     '--use-fake-ui-for-media-stream',
     '--use-fake-device-for-media-stream',
@@ -78,7 +82,7 @@ const browser = await chromium.launch({
     // HANDS_NO_WEBGL=1 checks that createHands gives up cleanly, so the app can fall back to taps.
     ...(process.env.HANDS_NO_WEBGL
       ? ['--disable-gpu', '--disable-software-rasterizer']
-      : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
+      : gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
   ],
 });
 const failures = [];
@@ -109,8 +113,10 @@ async function checkTracking(page, delegate) {
   const avg = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
   const median = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
   const inferences = log.map((e) => e.inferenceMs).filter((ms, i, all) => ms > 0 && ms !== all[i - 1]);
-  // Results trail the camera by up to three inferences (two to pass the 100 ms debounce, one of phase), so windows skip that much after each change.
-  const lag = Math.ceil((3 * median(inferences) / 1000) * FPS);
+  // A change shows up after the 100 ms debounce plus up to two samples, and hands.js samples at most every other
+  // frame, so windows skip that much after each change.
+  const sample = Math.max(median(inferences), 2000 / FPS);
+  const lag = Math.ceil(((100 + 2 * sample) / 1000) * FPS);
   console.log(`checks skip ${lag} frames after each change`);
 
   const starts = [];
@@ -122,7 +128,11 @@ async function checkTracking(page, delegate) {
     const settled = [...inWindow(OPEN_FROM + lag, MOVE_FROM), ...inWindow(MOVE_TO + lag, FRAMES)];
     const found = settled.filter((e) => e.hand).length / settled.length;
     check(found >= 0.9, `${tag} hand found in ${(found * 100).toFixed(0)}% of frames with a hand`);
-    check(inWindow(OPEN_FROM - 6, OPEN_FROM).every((e) => !e.hand), `${tag} hand dropped on the empty wall`);
+    // A log entry's frame label can trail the video by one frame, so the hand arriving at frame OPEN_FROM may be
+    // logged as OPEN_FROM - 1. A hand left over from the end of the loop would still sit at B, not A.
+    const wall = inWindow(OPEN_FROM - 7, OPEN_FROM - 1);
+    check(wall.every((e) => !e.hand), `${tag} hand dropped on the empty wall`);
+    if (wall.some((e) => e.hand)) console.log(`  ${tag} empty wall: ${wall.map((e) => `${e.frame}:${e.hand ? `hand@${e.hand.x.toFixed(2)},${e.hand.y.toFixed(2)}` : '-'}`).join(' ')}`);
     console.log(`  ${tag} while moving: ${inWindow(MOVE_FROM, MOVE_TO + lag).map((e) => `${e.frame}:${e.hand ? 'hand' : '-'}`).join(' ')}`);
 
     const offset = (e) => {
@@ -155,7 +165,7 @@ async function checkTracking(page, delegate) {
   });
 
   const sorted = [...inferences].sort((a, b) => a - b);
-  console.log(`timing (headless Chrome, ${delegate} delegate on swiftshader; phone GPUs differ):`);
+  console.log(`timing (Chrome, ${delegate} delegate on ${gpu ? 'Metal' : 'swiftshader'}; phone GPUs differ):`);
   console.log(`  update() mean ${avg(log.map((e) => e.updateMs)).toFixed(1)} ms over ${log.length} calls`);
   console.log(`  inference mean ${avg(inferences).toFixed(1)} ms, median ${median(inferences).toFixed(1)} ms, p95 ${sorted[Math.floor(sorted.length * 0.95)].toFixed(1)} ms over ${inferences.length} runs`);
 }
