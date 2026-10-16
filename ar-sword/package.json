@@ -12,7 +12,9 @@
     "test:world": "node test/world.mjs",
     "test:video": "node test/replay-detect.mjs",
     "template": "node test/make-template.mjs",
-    "test:texts": "node test/readability.mjs"
+    "test:texts": "node test/readability.mjs",
+    "test:grab": "node test/grab.mjs",
+    "maps": "node tools/maps/build.mjs"
   },
   "type": "module",
   "dependencies": {
