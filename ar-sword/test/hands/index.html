@@ -1,0 +1,88 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#222">
+<video id="video" playsinline muted autoplay></video>
+<script type="module">
+import { createHands } from '../../site/hands.js';
+
+const BITS = 8, CELL = 12;
+const video = document.getElementById('video');
+video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+await video.play();
+const hands = await createHands(video);
+
+const probe = new OffscreenCanvas(BITS * CELL, CELL).getContext('2d', { willReadFrequently: true });
+// The fake camera loops its file, so every frame carries its index as a barcode along the top left edge.
+function frameIndex() {
+  probe.drawImage(video, 0, 0, BITS * CELL, CELL, 0, 0, BITS * CELL, CELL);
+  const d = probe.getImageData(0, 0, BITS * CELL, CELL).data;
+  let n = 0;
+  for (let b = 0; b < BITS; b++) if (d[((CELL >> 1) * BITS * CELL + b * CELL + (CELL >> 1)) * 4] > 128) n |= 1 << b;
+  return n;
+}
+
+function grabFrame() {
+  const c = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+  c.getContext('2d').drawImage(video, 0, 0);
+  return c;
+}
+
+function annotate(c, entry) {
+  const w = c.width, h = c.height, g = c.getContext('2d');
+  const spot = window.spots?.[entry.frame];
+  if (spot) {
+    g.strokeStyle = '#fff';
+    g.lineWidth = 2;
+    g.setLineDash([6, 4]);
+    g.strokeRect((spot.x - 0.08) * w, (spot.y - 0.08) * h, 0.16 * w, 0.16 * h);
+    g.setLineDash([]);
+  }
+  const hand = entry.hand;
+  if (hand && entry.raw) {
+    g.fillStyle = '#ff0';
+    for (const p of entry.raw.landmarks) g.fillRect(p.x * w - 2, p.y * h - 2, 4, 4);
+  }
+  if (hand) {
+    g.fillStyle = hand.closed ? '#f33' : '#3f3';
+    g.beginPath();
+    g.arc(hand.x * w, hand.y * h, 9, 0, 2 * Math.PI);
+    g.fill();
+  }
+  g.fillStyle = 'rgba(0,0,0,0.6)';
+  g.fillRect(0, h - 64, w, 64);
+  g.fillStyle = '#fff';
+  g.font = '15px sans-serif';
+  const raw = entry.raw;
+  g.fillText(`frame ${entry.frame}  ${hand ? (hand.closed ? 'GESCHLOSSEN' : 'offen') : 'keine Hand'}${hand?.grab ? '  GRAB' : ''}${hand?.release ? '  RELEASE' : ''}`, 8, h - 42);
+  g.fillText(raw ? `fist ${raw.fist.toFixed(2)}  pinch ${raw.pinch.toFixed(2)}  ${entry.inferenceMs.toFixed(0)} ms ${hands.delegate}` : '', 8, h - 18);
+  return c.convertToBlob().then((b) => new Promise((ok) => {
+    const r = new FileReader();
+    r.onload = () => ok(r.result);
+    r.readAsDataURL(b);
+  }));
+}
+
+window.log = [];
+window.snaps = {};
+let wrapped = false;
+window.delegate = hands?.delegate ?? null;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const index = frameIndex();
+  if (log.length && index < log[log.length - 1].frame - 50) wrapped = true;
+  // Snapshots come from the first full pass of the camera loop. The page may skip camera frames,
+  // so each takes the first frame at or just after its target. The picture is taken before the
+  // inference, which lets the video move on.
+  const target = wrapped ? snapFrames.find((f) => index >= f && index < f + 6 && !(f in snaps)) : undefined;
+  const shot = target !== undefined && grabFrame();
+  const t0 = performance.now();
+  const hand = hands.update(now);
+  const updateMs = performance.now() - t0;
+  const entry = { frame: index, hand, updateMs, inferenceMs: hands.inferenceMs, raw: hands.raw && { ...hands.raw } };
+  log.push(entry);
+  if (shot) {
+    snaps[target] = null;
+    annotate(shot, entry).then((url) => (snaps[target] = url));
+  }
+}
+if (hands) requestAnimationFrame(frame);
+window.ready = true;
+</script>

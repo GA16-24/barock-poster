@@ -1,0 +1,26 @@
+[
+  {
+    "id": "hand_landmarker",
+    "file": "site/models/mediapipe/hand_landmarker.task",
+    "title": "MediaPipe Hand Landmarker (float16, version 1)",
+    "author": "Google",
+    "license": "Apache-2.0",
+    "url": "https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Hand%20Tracking%20(Lite_Full)%20with%20Fairness%20Oct%202021.pdf"
+  },
+  {
+    "id": "test_open_hand",
+    "file": "test/hands/right_hands.jpg",
+    "title": "right_hands.jpg (MediaPipe test image, back of a hand)",
+    "author": "Google, MediaPipe authors",
+    "license": "Apache-2.0",
+    "url": "https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/tasks/testdata/vision/BUILD"
+  },
+  {
+    "id": "test_fist",
+    "file": "test/hands/clenched_fist.jpg",
+    "title": "Clenched fist (960 px thumbnail)",
+    "author": "Genusfotografen (Tomas Gunnarsson) / Wikimedia Sverige",
+    "license": "CC BY-SA 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Clenched_fist.jpg"
+  }
+]
