@@ -72,6 +72,7 @@ h1 span { font-style: italic; text-transform: none; letter-spacing: 0.02em; font
 }
 #go:active { transform: translateY(1px); filter: brightness(0.95); }
 #go:disabled { filter: grayscale(0.5) brightness(0.8); }
+.sources { color: rgba(241, 230, 204, 0.7); font-size: 15px; }
 .load { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: rgba(241, 230, 204, 0.7); }
 progress {
   appearance: none;
@@ -113,7 +114,7 @@ progress::-moz-progress-bar { background: var(--gold); }
   border: 1px solid rgba(201, 162, 74, 0.7);
   border-radius: 2px;
 }
-.label.name small { display: block; font-size: 10px; color: var(--gold); }
+.label.name small { display: block; font-size: 10px; color: var(--gold); white-space: pre-line; }
 
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #hint {
