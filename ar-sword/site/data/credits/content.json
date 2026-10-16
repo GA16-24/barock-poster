@@ -1,0 +1,26 @@
+[
+  {
+    "id": "andreae-werk",
+    "file": "site/img/works/andreae.jpg",
+    "title": "Chymische Hochzeit: Christiani Rosencreutz. Anno 1459 (Straßburg: Zetzner, 1616), Titelblatt",
+    "author": "Johann Valentin Andreae; Digitalisat: Herzog August Bibliothek Wolfenbüttel, A: 134.13 Phys. (© HAB Wolfenbüttel <http://diglib.hab.de/drucke/134-13-phys/start.htm?image=00005>)",
+    "license": "CC BY-SA 3.0 DE (HAB-Nutzungsbedingungen; Herkunftszeile des Scans unten im Bild beibehalten, Seite zugeschnitten und verkleinert)",
+    "url": "https://diglib.hab.de/drucke/134-13-phys/00005.jpg"
+  },
+  {
+    "id": "bidermann-werk",
+    "file": "site/img/works/bidermann.jpg",
+    "title": "Ludi theatrales sacri, Pars prima (München: Wagner, 1666), Titelblatt mit Cenodoxus. Erster Druck des Cenodoxus; das Stück selbst ist von 1602.",
+    "author": "Jakob Bidermann; Exemplar der Großherzoglichen Gymnasiums-Bibliothek Mannheim; Digitalisat: CAMENA, Universität Mannheim",
+    "license": "Gemeinfrei (Druck von 1666, originalgetreue Reproduktion, vgl. § 68 UrhG). CAMENA nennt selbst keine Lizenz.",
+    "url": "https://mateo.uni-mannheim.de/camena/bider3/te01.html"
+  },
+  {
+    "id": "birken-werk",
+    "file": "site/img/works/birken.jpg",
+    "title": "Fortsetzung der Pegnitz-Schäferey (Nürnberg: Wolfgang Endter, 1645), Titelblatt",
+    "author": "Sigmund von Birken (Floridan) und Johann Klaj; Digitalisat: Google Books via Internet Archive",
+    "license": "Public Domain Mark 1.0",
+    "url": "https://archive.org/details/bub_gb_9q9IAAAAcAAJ"
+  }
+]
