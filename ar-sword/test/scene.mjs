@@ -28,9 +28,16 @@ const PAN = { center: 0, left: Math.atan(ZONES.adel.x / -DISTANCE), right: Math.
 
 const server = spawn('python3', ['-m', 'http.server', '8135', '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 800));
+// The simulated pan advances once per rendered frame, and software rendering of all models is too slow for it,
+// so on macOS the test draws with the real GPU, which needs a visible window.
+const gpu = process.platform === 'darwin';
 const browser = await chromium.launch({
   channel: 'chrome',
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'],
+  headless: !gpu,
+  args: [
+    ...(gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
+    '--autoplay-policy=no-user-gesture-required',
+  ],
 });
 
 const failures = [];
@@ -171,7 +178,7 @@ try {
     requestAnimationFrame(tick);
   }));
   const work = await page.evaluate(() => globalThis.__ar.frameMs());
-  console.log(`  frame: ${raf.toFixed(1)} ms between frames, ${work.toFixed(1)} ms app work per frame (swiftshader, not a phone)`);
+  console.log(`  frame: ${raf.toFixed(1)} ms between frames, ${work.toFixed(1)} ms app work per frame (${gpu ? "Metal GPU" : "swiftshader"}, not a phone)`);
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 } catch (e) {
   failures.push(e.message);
