@@ -1,0 +1,275 @@
+[
+ {
+  "id": "andreae",
+  "zone": "heads",
+  "method": "head",
+  "source": {
+   "title": "Johann Valentin Andreae im Alter von 42 Jahren (Kupferstich, 1628)",
+   "author": "Johann Pfann",
+   "license": "Public domain",
+   "url": "https://commons.wikimedia.org/wiki/File:Johann_Valentin_Andreae_aged_42.jpg"
+  },
+  "crop": [
+   110,
+   150,
+   500,
+   500
+  ],
+  "edit": "Turn this black and white copper engraving into a realistic color studio photograph of the same man. Keep his exact face: broad forehead, receding wavy dark-brown hair, heavy-lidded eyes, straight nose, full long dark-brown beard and moustache, age 42. He wears a white pleated millstone ruff collar and a black wool gown, like a 17th-century German Lutheran theologian. Framed as a complete portrait bust: the whole head, the collar and the shoulders fit completely inside the picture, cut off evenly just below the shoulders, with plain background visible on all sides. Facing the camera, soft even daylight, plain light grey background, natural skin texture, photorealistic, sharp focus.",
+  "metallic": 0,
+  "pad": 0.2,
+  "photoSeed": 0,
+  "meshSeed": 2
+ },
+ {
+  "id": "bidermann",
+  "zone": "heads",
+  "method": "head",
+  "reconstruction": true,
+  "source": {
+   "title": "Rekonstruktion: Jesuitenpater um 1630 (kein authentisches Bildnis bekannt)",
+   "author": "generiert mit Qwen-Image-Edit-2511 und TRELLIS.2",
+   "license": "eigene Erzeugung",
+   "url": ""
+  },
+  "edit": [
+   "A realistic color studio photograph of a German Catholic priest, about 50 years old, clean shaven, short thinning grey-brown hair, a thoughtful kind face, wearing a black cassock. Head and shoulders, facing the camera, soft even daylight, plain light grey background, natural skin texture, photorealistic, sharp focus.",
+   "Keep the man's face, head and hair exactly the same. Replace his modern clerical shirt and Roman collar with 17th-century clothing as in Baroque portraits of Jesuits: a plain black wool soutane closed high at the neck, and over it a broad flat white linen falling collar (a square white collar band lying flat on the chest and shoulders). Show the complete bust with the shoulders inside the picture and grey background on all sides. Photorealistic, same lighting."
+  ],
+  "metallic": 0,
+  "photoSeed": 1,
+  "meshSeed": 1
+ },
+ {
+  "id": "birken",
+  "zone": "heads",
+  "method": "head",
+  "source": {
+   "title": "Sigmund von Birken (Kupferstich)",
+   "author": "Jacob von Sandrart",
+   "license": "Public domain",
+   "url": "https://commons.wikimedia.org/wiki/File:Sigmund_von_Birken_Portrait_von_Jacob_von_Sandrart.jpg"
+  },
+  "crop": [
+   200,
+   280,
+   800,
+   950
+  ],
+  "edit": "Turn this black and white copper engraving of a sculpted bust into a realistic color studio photograph of the same living man. Keep his exact face: oval face, dark eyes, thin dark moustache, long wavy dark-brown hair falling past the shoulders, a green laurel wreath on his head, age about 40. Replace the stone drapery with a dark brown 17th-century coat and a white linen falling collar. Framed as a complete portrait bust: the whole head, the collar and the shoulders fit completely inside the picture, cut off evenly just below the shoulders, with plain background visible on all sides. Facing the camera, soft even daylight, plain light grey background, natural skin texture, photorealistic, sharp focus.",
+  "metallic": 0,
+  "pad": 0.2,
+  "photoSeed": 0,
+  "meshSeed": 2
+ },
+ {
+  "id": "krone",
+  "zone": "adel",
+  "method": "trellis",
+  "source": {
+   "title": "Rudolfinische Hauskrone (Kaiserkrone des Kaisertums Österreich), Weltliche Schatzkammer Wien",
+   "author": "Gryffindor",
+   "license": "Public domain",
+   "url": "https://commons.wikimedia.org/wiki/File:Weltliche_Schatzkammer_Wien_white.jpg"
+  },
+  "meshSeed": 1
+ },
+ {
+  "id": "peruecke",
+  "zone": "adel",
+  "method": "trellis",
+  "source": {
+   "title": "Bildnis eines Adligen mit Allonge-Perücke, Deutsches Hygiene-Museum Dresden (Vorlage; Perücke daraus generiert)",
+   "author": "Dguendel (Foto), unbekannter Maler",
+   "license": "CC BY 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Dresden,_Deutsches_Hygiene-Museum,_unbekannter_K%C3%BCnstler,_Bildnis_eines_Adligen_mit_Allonge-Per%C3%BCcke.jpg"
+  },
+  "edit": "Show only the long curly full-bottomed allonge wig from this portrait as a real physical object: the same light-brown wig with long ringlet curls, placed on a plain wooden wig stand head without a face, three-quarter view from slightly above, museum product photograph, soft studio light, plain white background, photorealistic.",
+  "photoSeed": 0,
+  "meshSeed": 0
+ },
+ {
+  "id": "kutsche",
+  "zone": "adel",
+  "method": "trellis",
+  "source": {
+   "title": "Wien-Schönbrunn, die Wagenburg, Kutsche",
+   "author": "Dguendel",
+   "license": "CC BY 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Wien-Sch%C3%B6nbrunn,_die_Wagenburg,_Kutsche-1.JPG"
+  },
+  "edit": "Keep only the red and gold carriage in the center exactly as it is, remove everything else, plain white background, product photo.",
+  "photoSeed": 0,
+  "meshSeed": 0,
+  "rotate": [
+   0,
+   -60,
+   0
+  ]
+ },
+ {
+  "id": "schloss",
+  "zone": "adel",
+  "method": "trellis",
+  "source": {
+   "title": "Schloss Nymphenburg, Hauptgebäude (Vorlage; Modell daraus generiert)",
+   "author": "Peulle",
+   "license": "CC BY-SA 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Schloss_Nymphenburg_main_building.jpg"
+  },
+  "edit": "Turn this palace into a detailed museum architectural scale model standing on a flat rectangular base: the tall central main building with its two lower adjoining wings and side pavilions exactly as in the photo, white facades, red tiled roofs, tall windows. Three-quarter view from slightly above, the whole model visible, soft studio light, plain white background, photorealistic product photograph.",
+  "photoSeed": 1,
+  "meshSeed": 1,
+  "rotate": [
+   0,
+   -90,
+   0
+  ]
+ },
+ {
+  "id": "degen",
+  "zone": "adel",
+  "method": "polyhaven",
+  "polyhaven": {
+   "id": "antique_estoc"
+  }
+ },
+ {
+  "id": "spiegel",
+  "zone": "adel",
+  "method": "polyhaven",
+  "polyhaven": {
+   "id": "ornate_mirror_01"
+  }
+ },
+ {
+  "id": "kronleuchter",
+  "zone": "adel",
+  "method": "polyhaven",
+  "polyhaven": {
+   "id": "Chandelier_03"
+  }
+ },
+ {
+  "id": "pokal",
+  "zone": "adel",
+  "method": "polyhaven",
+  "polyhaven": {
+   "id": "brass_goblets",
+   "keep": "^brass_goblet_01$"
+  }
+ },
+ {
+  "id": "bauernhaus",
+  "zone": "volk",
+  "method": "trellis",
+  "source": {
+   "title": "Fachwerkhaus aus Witzelroda, Hennebergisches Museum Kloster Veßra",
+   "author": "Ermell",
+   "license": "CC BY-SA 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Kloster_Ve%C3%9Fra_Fachwerkhaus_Witzelroda_-20220714-RM-152756.jpg"
+  },
+  "meshSeed": 0,
+  "rotate": [
+   0,
+   -45,
+   0
+  ]
+ },
+ {
+  "id": "pflug",
+  "zone": "volk",
+  "method": "trellis",
+  "source": {
+   "title": "Hölzerner Pferdepflug (Kuka), traditionelle Landwirtschaft",
+   "author": "Orce Wiki",
+   "license": "CC BY-SA 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Wooden_horse_plough_-_kuka_02_-_Macedonian_traditional_agriculture.jpg"
+  },
+  "edit": "Keep only the old wooden plough exactly as it is, with its wooden beam, handles and iron share, and remove everything else. Plain white background, three-quarter view from slightly above, the whole plough inside the picture, soft studio light, photorealistic product photograph.",
+  "photoSeed": 1,
+  "meshSeed": 0
+ },
+ {
+  "id": "sense",
+  "zone": "volk",
+  "method": "trellis",
+  "source": {
+   "title": "Sense (Werkzeug)",
+   "author": "1971markus",
+   "license": "CC BY-SA 3.0 DE",
+   "url": "https://commons.wikimedia.org/wiki/File:Sense_(Werkzeug).jpg"
+  },
+  "edit": "Show this scythe as a museum object on a plain white background: the same long wooden snath painted green with its two wooden hand grips and the long curved steel blade, standing upright with the blade at the bottom, seen in three-quarter view from slightly above so the curve of the blade is clearly visible. The whole scythe is inside the picture. Soft studio light, sharp, photorealistic product photograph.",
+  "photoSeed": 1,
+  "meshSeed": 1,
+  "rotate": [
+   -90,
+   0,
+   90
+  ]
+ },
+ {
+  "id": "brot",
+  "zone": "volk",
+  "method": "trellis",
+  "source": {
+   "title": "Rye sourdough loaf",
+   "author": "HadynMD",
+   "license": "CC BY-SA 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Ukrainian_Rye_Sourdough_(New_Westminster).jpg"
+  },
+  "meshSeed": 1
+ },
+ {
+  "id": "pestmaske",
+  "zone": "volk",
+  "method": "trellis",
+  "source": {
+   "title": "Pesthaube, 17. Jahrhundert",
+   "author": "Anagoria",
+   "license": "CC BY 3.0",
+   "url": "https://commons.wikimedia.org/wiki/File:17._Jht._Pesthaube_anagoria.JPG"
+  },
+  "meshSeed": 0
+ },
+ {
+  "id": "helm",
+  "zone": "volk",
+  "method": "trellis",
+  "source": {
+   "title": "Comb Morion, The Metropolitan Museum of Art",
+   "author": "The Metropolitan Museum of Art",
+   "license": "CC0",
+   "url": "https://commons.wikimedia.org/wiki/File:Comb_Morion_MET_DT4376.jpg"
+  },
+  "meshSeed": 0,
+  "rotate": [
+   0,
+   -45,
+   0
+  ]
+ },
+ {
+  "id": "fass",
+  "zone": "volk",
+  "method": "polyhaven",
+  "polyhaven": {
+   "id": "wooden_barrels_01",
+   "keep": "^wooden_barrels_01_barrel01$"
+  }
+ },
+ {
+  "id": "spinnrad",
+  "zone": "volk",
+  "method": "polyhaven",
+  "polyhaven": {
+   "id": "spinning_wheel_01"
+  },
+  "rotate": [
+   0,
+   -90,
+   0
+  ]
+ }
+]

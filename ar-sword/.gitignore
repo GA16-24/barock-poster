@@ -3,3 +3,4 @@ test/out/
 site/vendor/
 .netlify/
 tools/maps/cache/
+tools/assets/.cache/
