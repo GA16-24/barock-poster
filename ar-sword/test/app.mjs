@@ -18,7 +18,7 @@ execFileSync('ffmpeg', [
   '-map', '[o]', y4m,
 ]);
 
-const server = spawn('python3', ['-m', 'http.server', '8125'], { cwd: root, stdio: 'ignore' });
+const server = spawn('python3', ['-m', 'http.server', '8125', '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 800));
 
 const browser = await chromium.launch({

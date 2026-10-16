@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 
 const root = new URL('..', import.meta.url).pathname;
-const server = spawn('python3', ['-m', 'http.server', '8124'], { cwd: root, stdio: 'ignore' });
+const server = spawn('python3', ['-m', 'http.server', '8124', '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 800));
 
 const CENTERS = { '0442': [776, 952], '0443': [742, 928], '0444': [722, 985], '0445': [748, 948], '0446': [775, 672] };

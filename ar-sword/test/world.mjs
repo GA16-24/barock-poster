@@ -9,7 +9,7 @@ const root = new URL('..', import.meta.url).pathname;
 const photo = `${root}test/out/0442-small.jpg`;
 mkdirSync(`${root}test/out`, { recursive: true });
 execFileSync('ffmpeg', ['-nostdin', '-v', 'error', '-y', '-i', `${root}test/photos/0442.jpg`, '-vf', 'scale=1080:1440', photo]);
-const server = spawn('python3', ['-m', 'http.server', '8127'], { cwd: root, stdio: 'ignore' });
+const server = spawn('python3', ['-m', 'http.server', '8127', '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 800));
 const browser = await chromium.launch({
   channel: 'chrome',
