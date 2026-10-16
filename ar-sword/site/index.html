@@ -1,22 +1,41 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
 <meta charset="utf-8">
+<!-- MediaPipe posts a usage log to a Google server after about a minute; only same-origin and the loaders' own blob/data URLs may be fetched. -->
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data:">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1a1c2c">
-<title>THERMO BLADE</title>
+<meta name="theme-color" content="#16110b">
+<title>Barock im Raum</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
-<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/jsm/" } }</script>
 </head>
 <body>
 <video id="video" playsinline muted autoplay></video>
 <canvas id="view"></canvas>
-<div id="status" hidden>SEARCHING…</div>
+<div id="labels" hidden></div>
+<div id="hud" hidden>
+  <p id="hint" hidden>Greif mit der Hand nach einem Gegenstand oder tipp ihn an.</p>
+  <div id="cursor" hidden></div>
+  <aside id="card" hidden>
+    <button class="close" type="button" aria-label="Schließen">×</button>
+    <h2></h2>
+    <p class="note" hidden></p>
+    <dl></dl>
+    <p class="text"></p>
+  </aside>
+  <div id="bar">
+    <div id="status">SUCHE THERMOSTAT…</div>
+    <div id="loading"></div>
+  </div>
+</div>
 <main id="start">
-  <h1>THERMO<br>BLADE</h1>
-  <p>Point your camera at the thermostat. Keep a little wall to its right in view.</p>
-  <button id="go" type="button">START</button>
+  <p class="kicker">Ein Plakat zum Barock</p>
+  <h1>Barock<br><span>im Raum</span></h1>
+  <p class="how">Richte die Kamera auf den Thermostat an der Wand. Dann erscheinen drei Dichter, der Adel und das Volk um ihn herum.</p>
+  <button id="go" type="button">Start</button>
+  <div class="load"><progress id="progress" max="1" value="0"></progress><span id="progress-text">Lade Modelle</span></div>
   <p id="error" role="alert" hidden></p>
 </main>
 <script type="module" src="main.js"></script>

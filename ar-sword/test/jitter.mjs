@@ -33,7 +33,7 @@ async function measure(rotationSmoothing, gyro) {
   }
   await page.goto('http://localhost:8126/site/index.html');
   await page.click('#go');
-  await page.waitForFunction(() => document.getElementById('status').textContent === 'SWORD DRAWN', null, { timeout: 15000 });
+  await page.waitForFunction(() => document.getElementById('status').textContent === 'GEFUNDEN', null, { timeout: 15000 });
   await page.waitForTimeout(1000);
   const degrees = await page.evaluate(async () => {
     const { Quaternion, Vector3 } = await import('three');

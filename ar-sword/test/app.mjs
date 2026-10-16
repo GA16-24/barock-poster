@@ -40,7 +40,7 @@ try {
   await page.goto(process.env.APP_URL ?? 'http://localhost:8125/site/index.html');
   await page.screenshot({ path: `${out}/start.png` });
   await page.click('#go');
-  await page.waitForFunction(() => document.getElementById('status').textContent === 'SWORD DRAWN', null, { timeout: 15000 });
+  await page.waitForFunction(() => document.getElementById('status').textContent === 'GEFUNDEN', null, { timeout: 15000 });
   console.log('video', await page.evaluate(() => [video.videoWidth, video.videoHeight]));
   for (let i = 1; i <= 3; i++) {
     await page.screenshot({ path: `${out}/app-${i}.png` });

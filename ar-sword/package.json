@@ -1,7 +1,7 @@
 {
   "name": "ar-sword",
   "version": "1.0.0",
-  "description": "AR: a retro pixel sword appears to the right of the EMMETI thermostat",
+  "description": "AR: Baroque nobility, people and three poets around the EMMETI thermostat",
   "scripts": {
     "vendor": "node tools/vendor.mjs",
     "test:detect": "node test/detect.mjs",
@@ -14,7 +14,8 @@
     "template": "node test/make-template.mjs",
     "test:texts": "node test/readability.mjs",
     "test:grab": "node test/grab.mjs",
-    "maps": "node tools/maps/build.mjs"
+    "maps": "node tools/maps/build.mjs",
+    "test:scene": "node test/scene.mjs"
   },
   "type": "module",
   "dependencies": {
