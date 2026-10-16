@@ -61,7 +61,7 @@ Am Computer läuft die Seite dann unter http://localhost:8000. Auf `localhost` e
 
 ### Tests
 
-Die Tests starten Chrome mit einer künstlichen Kamera, die ein Video aus den Testfotos abspielt. `test:world` und `test:scene` zeichnen auf dem Mac mit der echten Grafikkarte und öffnen dafür kurz ein Fenster, weil die Software-Grafik für alle Modelle zu langsam ist.
+Die Tests starten Chrome mit einer künstlichen Kamera, die ein Video aus den Testfotos abspielt. `test:world`, `test:scene` und `test:grab` zeichnen auf dem Mac mit der echten Grafikkarte und öffnen dafür kurz ein Fenster, weil die Software-Grafik für alle Modelle und die Handerkennung zu langsam ist.
 
 | Befehl | prüft |
 | --- | --- |
