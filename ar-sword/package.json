@@ -16,7 +16,8 @@
     "test:grab": "node test/grab.mjs",
     "maps": "node tools/maps/build.mjs",
     "test:scene": "node test/scene.mjs",
-    "test:assets": "node tools/assets/budget.mjs"
+    "test:assets": "node tools/assets/budget.mjs",
+    "demo": "node test/demo.mjs"
   },
   "type": "module",
   "dependencies": {
