@@ -4,7 +4,7 @@ import { homography } from './pose.js';
 import { TEMPLATE } from './template.js';
 
 const MIN_PIXELS = 120;
-const ASPECT = [0.5, 2.2];
+const ASPECT = [0.5, 3];
 const MIN_FILL = 0.8;
 const MIN_BEZEL_CONTRAST = 1.3;
 // Normalized cross-correlation with the reference thermostat. In a 40 s walk-around video the neighbouring card reader

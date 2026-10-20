@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { toGray, detectScreen } from './detect.js';
-import { poseFromQuad } from './pose.js';
+import { createWallTracker } from './track.js';
 import { stage, entries, labels, initStage, loadScene, updateScene, pick, select, setHover, selectedEntry } from './scene.js';
 import { loadInfo, infoFor } from './info.js';
 import * as ui from './ui.js';
@@ -10,9 +10,9 @@ const DETECT_LONG_SIDE = 1280;
 const FOCAL_PER_LONG_SIDE = 0.75;
 const POSITION_SMOOTHING = 0.5;
 // Smoothing runs in the gyro's world frame, where the wall never moves, so heavy rotation smoothing adds no lag when the phone turns.
+// Without the gyro it would run in camera space and trail every turn, and the wall tracker has smoothed the tilt already.
 const ROTATION_SMOOTHING = 0.2;
 const SNAP_DISTANCE = 0.3;
-const LCD_HEIGHT = 0.045;
 // With the gyro the scene stays fixed in the room while the user pans across its 2.3 m; without it a held pose
 // would be glued to the screen. The detector only treats the last hit as a live track for TRACK_MS, so a stale
 // hit from long ago cannot lower the bar for a look-alike (the card reader) somewhere else.
@@ -99,12 +99,12 @@ const workCtx = work.getContext('2d', { willReadFrequently: true });
 
 let videoW = 0, videoH = 0, frameW = 0, frameH = 0, focal = 0;
 let lastQuad = null;
-const target = new THREE.Matrix4();
-const targetPos = new THREE.Vector3(), targetQuat = new THREE.Quaternion(), targetScale = new THREE.Vector3();
+const targetPos = new THREE.Vector3(), targetQuat = new THREE.Quaternion();
 // pos and quat are the smoothed anchor in the world frame; frameRot is the camera rotation when the shown video frame was captured.
 const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1);
 const frameRot = new THREE.Quaternion(), cameraFromWorld = new THREE.Quaternion();
 const viewPos = new THREE.Vector3(), viewQuat = new THREE.Quaternion();
+const wall = createWallTracker();
 let lastHit = null;
 let lastSeen = -Infinity;
 let lastVideoTime = -1;
@@ -136,15 +136,6 @@ function fitCanvas() {
 }
 addEventListener('resize', fitCanvas);
 
-// The homography's scale is biased short when the LCD is small: at 1.8 m it is about 32 px wide and 0.25 px of
-// corner noise puts the median depth at 1.6 m (1.05 m in test/scene.mjs), which blows the 2.3 m scene up by 1.7x.
-// The two vertical edges keep their length when the wall turns, so their mean inverse length gives the depth of the
-// LCD center to about 1 %. The direction to the center stays the homography's, which is exact.
-function depthFromEdges(quad) {
-  const edge = (a, b) => Math.hypot(quad[a][0] - quad[b][0], quad[a][1] - quad[b][1]);
-  return (focal * LCD_HEIGHT * (1 / edge(0, 3) + 1 / edge(1, 2))) / 2;
-}
-
 function jumped(quad) {
   const width = Math.hypot(quad[1][0] - quad[0][0], quad[1][1] - quad[0][1]);
   const jump = lastQuad && quad.reduce((s, p, i) => s + Math.hypot(p[0] - lastQuad[i][0], p[1] - lastQuad[i][1]), 0) / 4;
@@ -161,10 +152,8 @@ function detect(now) {
   const gray = toGray(workCtx.getImageData(0, 0, frameW, frameH).data, frameW * frameH);
   const tracking = now - lastSeen < Math.min(hold(), TRACK_MS);
   const hit = detectScreen(gray, frameW, frameH, tracking ? lastHit : null);
-  const pose = hit && poseFromQuad(hit.quad, focal, frameW / 2, frameH / 2);
-  if (pose) {
-    target.fromArray(pose).decompose(targetPos, targetQuat, targetScale);
-    targetPos.multiplyScalar(depthFromEdges(hit.quad) / -targetPos.z);
+  if (hit && !tracking) wall.reset();
+  if (hit && wall.update(hit.quad, focal, frameW / 2, frameH / 2, targetPos, targetQuat)) {
     targetPos.applyQuaternion(frameRot);
     targetQuat.premultiply(frameRot);
     if (worldFromCamera) uprightOnWall(targetQuat);
@@ -173,7 +162,7 @@ function detect(now) {
       quat.copy(targetQuat);
     } else {
       pos.lerp(targetPos, POSITION_SMOOTHING);
-      quat.slerp(targetQuat, ROTATION_SMOOTHING);
+      quat.slerp(targetQuat, worldFromCamera ? ROTATION_SMOOTHING : 1);
     }
     lastSeen = now;
     lastHit = hit;

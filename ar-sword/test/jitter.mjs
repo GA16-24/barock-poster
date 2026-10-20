@@ -7,10 +7,11 @@ const out = `${root}test/out`;
 mkdirSync(out, { recursive: true });
 
 // A held-still phone: one photo, shaken by a few source pixels per frame (about 1 px in the detection frame).
+// The crop has the frame's 9:16 shape, so the LCD keeps its proportions as a camera would see them.
 const y4m = `${out}/shake.y4m`;
 execFileSync('ffmpeg', [
   '-nostdin', '-v', 'error', '-y', '-loop', '1', '-t', '4', '-i', `${root}test/photos/0442.jpg`,
-  '-vf', "crop=3500:5600:x='300+12*random(1)':y='60+12*random(2)',scale=405:720,fps=15,setsar=1,format=yuv420p",
+  '-vf', "crop=3150:5600:x='475+12*random(1)':y='60+12*random(2)',scale=405:720,fps=15,setsar=1,format=yuv420p",
   y4m,
 ]);
 
@@ -54,9 +55,10 @@ async function measure(rotationSmoothing, gyro) {
 }
 
 try {
-  console.log('raw pose (no rotation smoothing):', await measure(1));
-  console.log('shipped smoothing, no gyro:     ', await measure());
-  console.log('shipped smoothing, upright gyro:', await measure(undefined, true));
+  // Without the gyro only the wall tracker smooths, so ROTATION_SMOOTHING matters only with it.
+  console.log('no gyro:                         ', await measure());
+  console.log('upright gyro, no world smoothing:', await measure(1, true));
+  console.log('upright gyro, shipped smoothing: ', await measure(undefined, true));
 } finally {
   await browser.close();
   server.kill();
