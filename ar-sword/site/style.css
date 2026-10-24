@@ -149,7 +149,12 @@ progress::-moz-progress-bar { background: var(--gold); }
 #cursor.over { border-color: var(--gold-hi); background: rgba(201, 162, 74, 0.18); }
 #cursor.closed { width: 30px; height: 30px; background: rgba(201, 162, 74, 0.45); }
 
+/* Registered so ui.js reads the insets back in px. */
+@property --safe-top { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --safe-bottom { syntax: "<length>"; inherits: false; initial-value: 0px; }
 #card {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
   position: absolute;
   left: 0;
   top: 0;
@@ -168,7 +173,8 @@ progress::-moz-progress-bar { background: var(--gold); }
   scale: 0.94;
   transition: opacity 0.16s, scale 0.16s, visibility 0s 0.16s;
 }
-#card.open { opacity: 1; visibility: visible; scale: 1; transition: opacity 0.12s, scale 0.12s; }
+#card.open { opacity: 1; visibility: visible; scale: 1; transition: opacity 0.2s, scale 0.2s; }
+#card.open.away { opacity: 0; scale: 0.96; pointer-events: none; transition: opacity 0.35s, scale 0.35s; }
 #card h2 { margin: 0 22px 5px 0; font-size: 16px; font-weight: 600; line-height: 1.15; }
 #card .text {
   margin: 5px 0 0;

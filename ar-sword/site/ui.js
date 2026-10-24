@@ -116,8 +116,9 @@ export function showCard({ title, text, facts, note, pair }) {
   const pairEl = cardEl.querySelector('.pair');
   pairEl.textContent = pair ? `Gegenstück: ${pair}` : '';
   pairEl.hidden = !pair;
-  cardEl.classList.remove('more');
+  cardEl.classList.remove('more', 'away');
   cardEl.classList.add('open');
+  corner = null;
   cardEl.scrollTop = 0;
   // The card grows out of its object and settles with a little overshoot.
   cardEl.animate(
@@ -129,20 +130,32 @@ export function hideCard() { cardEl.classList.remove('open'); }
 cardEl.querySelector('.text').addEventListener('click', () => cardEl.classList.toggle('more'));
 export const onCardClose = (fn) => cardEl.querySelector('.close').addEventListener('click', fn);
 
-const MARGIN = 12;
-let cardSide = 'left';
-// The card docks in a bottom corner on the side away from its object, so it never hides the object, the poets or the
-// threads between them. It grows out of the object's direction. Hysteresis keeps it from flipping while the object
-// sits near the middle.
-export function placeCard(uv) {
+const MARGIN = 12, BAR = 84;
+// Moving the card costs the reader their place, so it only moves to a corner that hides clearly less.
+const SWITCH = 0.15;
+let corner = null;
+const overlap = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+const px = (style, name) => parseFloat(style.getPropertyValue(name)) || 0;
+// The card docks in the screen corner where it hides least of `avoid`, the screen rects of the selected object and
+// its linked items (the counterpart, the risen map and book), and grows out of the object's direction. Ties go to
+// the bottom, away from the object. `away` fades it while the object is out of view; the selection lives on.
+export function placeCard(uv, avoid, away) {
   if (!cardEl.classList.contains('open')) return;
+  cardEl.classList.toggle('away', away);
   const { W, H } = cover();
   const [x, y] = toScreen(uv[0], uv[1]);
-  if (x > W * 0.62) cardSide = 'left';
-  else if (x < W * 0.38) cardSide = 'right';
-  const cw = cardEl.offsetWidth, ch = cardEl.offsetHeight;
-  const cx = cardSide === 'left' ? MARGIN : W - cw - MARGIN;
-  const cy = H - ch - 84;
+  const cw = cardEl.offsetWidth, ch = cardEl.offsetHeight, style = getComputedStyle(cardEl);
+  const top = MARGIN + px(style, '--safe-top'), bottom = H - ch - BAR - px(style, '--safe-bottom');
+  const far = x < W / 2 ? W - cw - MARGIN : MARGIN, near = W - cw - far;
+  const spots = [[far, bottom], [near, bottom], [far, top], [near, top]].map(([cx, cy]) => ({
+    key: `${cx < W / 2 ? 'left' : 'right'} ${cy === top ? 'top' : 'bottom'}`, cx, cy,
+    hidden: avoid.reduce((sum, r) => sum + overlap([cx, cy, cx + cw, cy + ch], r), 0),
+  }));
+  const best = spots.reduce((b, s) => (s.hidden < b.hidden ? s : b));
+  const was = spots.find((s) => s.key === corner);
+  if (!was || best.hidden < was.hidden - SWITCH * cw * ch) corner = best.key;
+  const { cx, cy } = spots.find((s) => s.key === corner);
+  if (was && was.key !== corner) cardEl.animate([{ translate: `${was.cx - cx}px ${was.cy - cy}px` }, { translate: '0 0' }], { duration: 260, easing: 'ease-out' });
   cardEl.style.transformOrigin = `${(x - cx).toFixed(0)}px ${(y - cy).toFixed(0)}px`;
   cardEl.style.transform = `translate(${cx.toFixed(0)}px, ${cy.toFixed(0)}px)`;
 }

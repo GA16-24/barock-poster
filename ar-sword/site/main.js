@@ -21,7 +21,10 @@ const TRACK_MS = 500;
 // The entrance clock only runs while the scene shows, so losing the thermostat mid-entrance pauses it. Only a find
 // more than REPLAY_MS after the loss starts it over.
 const REPLAY_MS = 5000;
-// A card goes away when its object has been off screen, or the scene lost, for this long.
+// A selection, with its threads and turned heads, ends once its object has been wholly off screen, or the scene lost,
+// for SELECTION_GRACE_MS; a sweep of the camera often leaves it for a moment. The card fades sooner, once the object's
+// centre has been off screen for CARD_GRACE_MS, so it never explains something the user no longer sees.
+const SELECTION_GRACE_MS = 2000;
 const CARD_GRACE_MS = 300;
 
 const $ = (id) => document.getElementById(id);
@@ -112,7 +115,7 @@ const wall = createWallTracker();
 let lastHit = null;
 let lastSeen = -Infinity;
 let lastVideoTime = -1;
-let sceneAge = 0, wasSeen = false, goneAt = -Infinity, strayedAt = null;
+let sceneAge = 0, wasSeen = false, goneAt = -Infinity, lostAt = null, awayAt = null;
 
 function resize(vw, vh) {
   videoW = vw;
@@ -188,7 +191,7 @@ function entryAt(uv) {
 }
 
 function trigger(e) {
-  strayedAt = null;
+  lostAt = awayAt = null;
   select(e);
   if (e) ui.showCard(infoFor(e));
   else ui.hideCard();
@@ -199,6 +202,29 @@ const v3 = new THREE.Vector3();
 function uvOf(object) {
   v3.setFromMatrixPosition(object.matrixWorld).project(camera);
   return v3.z < 1 ? [(v3.x + 1) / 2, (1 - v3.y) / 2] : null;
+}
+// The part of an entry's bounds on screen as [x0, y0, x1, y1] in CSS px, or null when none is. Box edges that cross
+// the near plane are cut there, since a corner behind the camera projects to the wrong side.
+const corners = Array.from({ length: 8 }, () => new THREE.Vector3());
+function screenRect(e) {
+  if (!e.box || !e.holder.visible) return null;
+  const { min, max } = e.box, near = -camera.near;
+  corners.forEach((c, i) => c.set(i & 1 ? max.x : min.x, i & 2 ? max.y : min.y, i & 4 ? max.z : min.z)
+    .applyMatrix4(e.holder.matrixWorld).applyMatrix4(camera.matrixWorldInverse));
+  const front = corners.filter((c) => c.z < near);
+  for (let i = 0; i < 8; i++) for (const bit of [1, 2, 4]) {
+    const a = corners[i], b = corners[i | bit];
+    if (!(i & bit) && (a.z < near) !== (b.z < near)) front.push(new THREE.Vector3().lerpVectors(a, b, (near - a.z) / (b.z - a.z)));
+  }
+  if (!front.length) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of front) {
+    p.applyMatrix4(camera.projectionMatrix);
+    const [x, y] = ui.toScreen((p.x + 1) / 2, (1 - p.y) / 2);
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  }
+  [x0, y0, x1, y1] = [Math.max(x0, 0), Math.max(y0, 0), Math.min(x1, innerWidth), Math.min(y1, innerHeight)];
+  return x0 < x1 && y0 < y1 ? [x0, y0, x1, y1] : null;
 }
 // How long `meters` on the wall look at that point, in video heights.
 function sizeOnScreen(matrixWorld, meters) {
@@ -248,10 +274,14 @@ function frame(now) {
   ui.placeLabels(labels.map((l) => ({ uv: uvOf(l.marker), size: sizeOnScreen(l.marker.matrixWorld, l.width), show: l.show })), seen);
   const sel = selectedEntry();
   if (sel) {
-    const uv = uvOf(sel.holder);
-    strayedAt = seen && uv && ui.onScreen(uv) ? null : strayedAt ?? now;
-    if (strayedAt !== null && now - strayedAt > CARD_GRACE_MS) trigger(null);
-    else ui.placeCard(uv ?? [0.5, 0.5]);
+    const rect = seen ? screenRect(sel) : null, uv = uvOf(sel.holder);
+    lostAt = rect ? null : lostAt ?? now;
+    awayAt = seen && uv && ui.onScreen(uv) ? null : awayAt ?? now;
+    if (lostAt !== null && now - lostAt > SELECTION_GRACE_MS) trigger(null);
+    else {
+      const avoid = [rect, ...entries.filter((e) => e.role).map(screenRect)].filter(Boolean);
+      ui.placeCard(uv ?? [0.5, 0.5], avoid, awayAt !== null && now - awayAt > CARD_GRACE_MS);
+    }
   }
   ui.setStatus(seen);
   frameStats.n++;
@@ -274,7 +304,7 @@ globalThis.__ar = {
   objects: () => entries.map((e) => {
     const [u, v] = uvOf(e.holder) ?? [NaN, NaN];
     const [x, y] = ui.toScreen(u, v);
-    return { id: e.id, kind: e.kind, u, v, x, y, shown: e.holder.visible && e.show > 0.9, loaded: !!e.box };
+    return { id: e.id, kind: e.kind, role: e.role, u, v, x, y, rect: screenRect(e), shown: e.holder.visible && e.show > 0.9, loaded: !!e.box };
   }),
 };
 
