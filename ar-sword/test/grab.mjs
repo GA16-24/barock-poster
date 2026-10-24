@@ -1,6 +1,8 @@
 import { chromium } from 'playwright';
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { withGpu } from './gpu-lock.mjs';
+import { serve } from './serve.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const fixtures = `${root}test/hands`;
@@ -65,26 +67,9 @@ const expected = (f) => {
   return { x: A.x + (B.x - A.x) * k, y: A.y + (B.y - A.y) * k };
 };
 
-const PORT = 8134;
-const server = spawn('python3', ['-m', 'http.server', `${PORT}`, '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
-await new Promise((r) => setTimeout(r, 800));
-
 // On macOS the hand model runs on the real GPU; on swiftshader one inference can take 200 to 400 ms under load,
 // slow enough to lose a fist between samples.
 const gpu = process.platform === 'darwin' && !process.env.HANDS_NO_WEBGL;
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: !gpu,
-  args: [
-    '--use-fake-ui-for-media-stream',
-    '--use-fake-device-for-media-stream',
-    `--use-file-for-fake-video-capture=${y4m}`,
-    // HANDS_NO_WEBGL=1 checks that createHands gives up cleanly, so the app can fall back to taps.
-    ...(process.env.HANDS_NO_WEBGL
-      ? ['--disable-gpu', '--disable-software-rasterizer']
-      : gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
-  ],
-});
 const failures = [];
 const check = (ok, message) => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${message}`);
@@ -169,7 +154,7 @@ async function checkTracking(page, delegate) {
   console.log(`  inference mean ${avg(inferences).toFixed(1)} ms, median ${median(inferences).toFixed(1)} ms, p95 ${sorted[Math.floor(sorted.length * 0.95)].toFixed(1)} ms over ${inferences.length} runs`);
 }
 
-try {
+async function test(origin, browser) {
   const page = await browser.newPage({ viewport: { width: W, height: H } });
   const foreign = [];
   await page.route('**/*', (route) => {
@@ -182,19 +167,40 @@ try {
   page.on('pageerror', (e) => console.log(`page error: ${e.message}`));
   const spots = Array.from({ length: FRAMES }, (_, f) => expected(f));
   await page.addInitScript(`window.snapFrames = [24, 45, 75, 105, 128, 160]; window.spots = ${JSON.stringify(spots)};`);
-  await page.goto(`http://127.0.0.1:${PORT}/test/hands/index.html`);
+  await page.goto(`${origin}/test/hands/index.html`);
   await page.waitForFunction(() => window.ready, null, { timeout: 30000 });
   const delegate = await page.evaluate(() => window.delegate);
   if (process.env.HANDS_NO_WEBGL) check(delegate === null, 'without WebGL createHands returns null');
   else await checkTracking(page, delegate);
   check(foreign.length === 0, `no requests to foreign servers${foreign.length ? `: ${[...new Set(foreign)].join(', ')}` : ''}`);
-} catch (e) {
-  failures.push(e.message);
-  console.log(`FAIL: ${e.message}`);
-} finally {
-  await browser.close();
-  server.kill();
 }
+
+await withGpu(async () => {
+  const { origin, close } = await serve(root);
+  let browser;
+  try {
+    browser = await chromium.launch({
+      channel: 'chrome',
+      headless: !gpu,
+      args: [
+        '--use-fake-ui-for-media-stream',
+        '--use-fake-device-for-media-stream',
+        `--use-file-for-fake-video-capture=${y4m}`,
+        // HANDS_NO_WEBGL=1 checks that createHands gives up cleanly, so the app can fall back to taps.
+        ...(process.env.HANDS_NO_WEBGL
+          ? ['--disable-gpu', '--disable-software-rasterizer']
+          : gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
+      ],
+    });
+    await test(origin, browser);
+  } catch (e) {
+    failures.push(e.message);
+    console.log(`FAIL: ${e.message}`);
+  } finally {
+    await browser?.close();
+    close();
+  }
+});
 if (failures.length) {
   console.log(`${failures.length} check(s) failed`);
   process.exit(1);

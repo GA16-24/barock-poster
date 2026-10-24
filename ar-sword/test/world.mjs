@@ -1,6 +1,8 @@
 import { chromium } from 'playwright';
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { withGpu } from './gpu-lock.mjs';
+import { serve } from './serve.mjs';
 
 // A synthetic phone pans across the thermostat photo while reporting matching gyro readings, so the sword's
 // on-screen position can be compared with where it belongs in the room: while tracked, while the LCD is
@@ -9,26 +11,16 @@ const root = new URL('..', import.meta.url).pathname;
 const photo = `${root}test/out/0442-small.jpg`;
 mkdirSync(`${root}test/out`, { recursive: true });
 execFileSync('ffmpeg', ['-nostdin', '-v', 'error', '-y', '-i', `${root}test/photos/0442.jpg`, '-vf', 'scale=1080:1440', photo]);
-const server = spawn('python3', ['-m', 'http.server', '8127', '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
-await new Promise((r) => setTimeout(r, 800));
 // Software rendering of the full scene is too slow for the video to keep pace with the gyro, so on macOS the
 // test draws with the real GPU, which needs a visible window.
 const gpu = process.platform === 'darwin';
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: !gpu,
-  args: [
-    ...(gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
-    '--autoplay-policy=no-user-gesture-required',
-  ],
-});
 
 const deg = Math.PI / 180;
 const yaw = (t) => (t < 2 ? 0 : t < 4 ? (t - 2) * 7.5 : t < 6 ? 15 + (t - 4) * 15 : t < 7 ? 45 : t < 9 ? 45 - (t - 7) * 22.5 : 0) * deg;
 const COVER = [2.8, 3.2];
 const END = 10;
 
-async function run(gyro) {
+async function run(browser, origin, gyro) {
   const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
   page.on('pageerror', (e) => console.log(`page error: ${e.message}`));
   page.on('console', (m) => m.type() === 'error' && console.log(`console: ${m.text()}`));
@@ -83,7 +75,7 @@ async function run(gyro) {
       return canvas.captureStream(30);
     };
   }, { yawSrc: yaw.toString(), COVER, gyro });
-  await page.goto('http://localhost:8127/site/index.html');
+  await page.goto(`${origin}/site/index.html`);
   await page.click('#go');
   await page.waitForFunction((end) => globalThis.__samples?.at(-1)?.t > end, END, { timeout: 120000, polling: 500 });
   const samples = await page.evaluate(() => globalThis.__samples);
@@ -116,14 +108,26 @@ async function run(gyro) {
 }
 
 let failures = [];
-try {
-  console.log('gyro:');
-  failures.push(...await run(true));
-  console.log('no gyro:');
-  failures.push(...await run(false));
-} finally {
-  await browser.close();
-  server.kill();
-}
+await withGpu(async () => {
+  const { origin, close } = await serve(root);
+  let browser;
+  try {
+    browser = await chromium.launch({
+      channel: 'chrome',
+      headless: !gpu,
+      args: [
+        ...(gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
+        '--autoplay-policy=no-user-gesture-required',
+      ],
+    });
+    console.log('gyro:');
+    failures.push(...await run(browser, origin, true));
+    console.log('no gyro:');
+    failures.push(...await run(browser, origin, false));
+  } finally {
+    await browser?.close();
+    close();
+  }
+});
 for (const f of failures) console.log(`FAIL: ${f}`);
 if (failures.length) process.exit(1);

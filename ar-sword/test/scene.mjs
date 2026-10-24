@@ -1,7 +1,9 @@
 import { chromium } from 'playwright';
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { ITEMS, AUTHORS, ZONES } from '../site/catalog.js';
+import { withGpu } from './gpu-lock.mjs';
+import { serve } from './serve.mjs';
 
 // A synthetic room: a plain wall with the thermostat photo at real scale, seen by a phone 1.8 m away that pans
 // to the center, the left (Der Adel) and the right (Das Volk) while reporting matching gyro readings.
@@ -26,19 +28,9 @@ console.log(`models on disk: ${expected.length - AUTHORS.length} of ${ITEMS.leng
 const DISTANCE = 1.8;
 const PAN = { center: 0, left: Math.atan(ZONES.adel.x / -DISTANCE), right: Math.atan(ZONES.volk.x / -DISTANCE) };
 
-const server = spawn('python3', ['-m', 'http.server', '8135', '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
-await new Promise((r) => setTimeout(r, 800));
 // The simulated pan advances once per rendered frame, and software rendering of all models is too slow for it,
 // so on macOS the test draws with the real GPU, which needs a visible window.
 const gpu = process.platform === 'darwin';
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: !gpu,
-  args: [
-    ...(gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
-    '--autoplay-policy=no-user-gesture-required',
-  ],
-});
 
 const failures = [];
 const check = (ok, what) => {
@@ -46,7 +38,7 @@ const check = (ok, what) => {
   if (!ok) failures.push(what);
 };
 
-try {
+async function test(origin, browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -105,7 +97,7 @@ try {
     };
   }, { DISTANCE });
 
-  await page.goto('http://localhost:8135/site/index.html');
+  await page.goto(`${origin}/site/index.html`);
   await page.screenshot({ path: `${out}/start.png` });
   await page.click('#go');
   await page.waitForFunction(() => document.getElementById('status').textContent === 'GEFUNDEN', null, { timeout: 20000 });
@@ -139,11 +131,24 @@ try {
   const shown = (await page.evaluate(() => globalThis.__ar.objects())).filter((o) => o.shown && o.loaded && o.x > 40 && o.x < 350 && o.y > 120 && o.y < 700);
   const pickFor = (kinds) => shown.find((o) => kinds.includes(o.kind)) ?? shown[0];
   const title = () => page.textContent('#card h2');
+  // The card must keep the bottom 84 px free and dock within 15 % of its area of the corner that hides least of the
+  // selected object and its linked items.
+  const checkCard = async (what) => {
+    const f = await page.evaluate(() => {
+      const c = document.getElementById('card').getBoundingClientRect();
+      const avoid = globalThis.__ar.objects().filter((o) => o.rect && (o.id === globalThis.__ar.selected() || o.role)).map((o) => o.rect);
+      const hides = (x, y) => avoid.reduce((s, a) => s + Math.max(0, Math.min(x + c.width, a[2]) - Math.max(x, a[0])) * Math.max(0, Math.min(y + c.height, a[3]) - Math.max(y, a[1])), 0);
+      const best = Math.min(...[12, innerWidth - c.width - 12].flatMap((x) => [12, innerHeight - c.height - 84].map((y) => hides(x, y))));
+      return { n: avoid.length, hides: hides(c.x, c.y), best, slack: 0.15 * c.width * c.height + 2 * (c.width + c.height), free: innerHeight - c.bottom };
+    });
+    check(f.hides <= f.best + f.slack && f.free >= 83.5, `${what}: card hides ${f.hides.toFixed(0)} px2 of ${f.n} linked objects (best corner ${f.best.toFixed(0)}), ${f.free.toFixed(0)} px free below`);
+  };
 
   const tapped = pickFor(['item', 'book']);
   await page.mouse.click(tapped.x, tapped.y);
   await page.waitForTimeout(1200);
   check(await title() === texts[tapped.id].title, `tap on ${tapped.id} shows "${await title()}"`);
+  await checkCard(tapped.id);
   await page.screenshot({ path: `${out}/card-tap-${tapped.id}.png` });
   await page.click('#card .close');
   await page.waitForSelector('#card', { state: 'hidden', timeout: 1000 }).catch(() => {});
@@ -158,6 +163,7 @@ try {
   await page.evaluate((h) => globalThis.__ar.setHand({ ...h, closed: true, grab: true }), hand);
   await page.waitForTimeout(1500);
   check(await title() === texts[grabbed.id].title, `hand grab on ${grabbed.id} shows "${await title()}"`);
+  await checkCard(grabbed.id);
   await page.screenshot({ path: `${out}/card-hand-${grabbed.id}.png` });
   await page.evaluate(() => globalThis.__ar.setHand(null));
 
@@ -170,6 +176,7 @@ try {
   const isShown = (id) => after.find((o) => o.id === id).shown;
   if (onDisk(other.map)) check(isShown(`${other.id}-ort`) && !isShown(`${AUTHORS[0].id}-ort`), `map switched to ${other.id}`);
   check(isShown(`${other.id}-werk`) && !isShown(`${AUTHORS[0].id}-werk`), `book switched to ${other.id}`);
+  await checkCard(other.id);
   await page.screenshot({ path: `${out}/card-plate-${other.id}.png` });
 
   const raf = await page.evaluate(() => new Promise((resolve) => {
@@ -179,12 +186,55 @@ try {
   }));
   const work = await page.evaluate(() => globalThis.__ar.frameMs());
   console.log(`  frame: ${raf.toFixed(1)} ms between frames, ${work.toFixed(1)} ms app work per frame (${gpu ? 'Metal GPU' : "swiftshader"}, not a phone)`);
+
+  await panTo('left');
+  const [far] = (await page.evaluate(() => globalThis.__ar.objects()))
+    .filter((o) => zoneOf(o.id) === 'adel' && o.shown && o.x > 40 && o.y > 120 && o.y < 700).sort((a, b) => a.x - b.x);
+  await page.mouse.click(far.x, far.y);
+  await page.waitForTimeout(1200);
+  check(await page.evaluate(() => globalThis.__ar.selected()) === far.id, `tap on ${far.id} selects it`);
+  await checkCard(far.id);
+  const life = await page.evaluate(({ id, left, right }) => new Promise((resolve) => {
+    const card = document.getElementById('card'), at = {};
+    let phase = 'out', lastOn = null, moves = 0, spot = card.style.transform;
+    globalThis.__yaw = right;
+    setTimeout(() => resolve({ ...at, phase, moves }), 20000);
+    (function tick() {
+      const t = performance.now(), sel = globalThis.__ar.selected(), away = card.classList.contains('away');
+      if (globalThis.__ar.objects().find((o) => o.id === id).rect) lastOn = t;
+      if (sel !== id) return resolve({ ...at, phase, cleared: t, lastOn, moves });
+      if (card.style.transform !== spot) { moves++; spot = card.style.transform; }
+      if (phase === 'out' && away) [phase, at.away, globalThis.__yaw] = ['back', t, left];
+      else if (phase === 'back' && !away) [phase, at.back, globalThis.__yaw] = ['gone', t, right];
+      requestAnimationFrame(tick);
+    })();
+  }), { id: far.id, left: PAN.left, right: PAN.right });
+  check(life.away && life.back, `card of ${far.id} faded once its centre left the screen and came back with it, selection kept (${life.phase})`);
+  const lingered = life.cleared - life.lastOn;
+  check(life.moves <= 3, `card took ${life.moves} corner changes while the camera swept past ${far.id}`);
+  check(life.phase === 'gone' && lingered > 1700 && lingered < 2800, `selection ended ${lingered?.toFixed(0)} ms after its bounds left the screen`);
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
-} catch (e) {
-  failures.push(e.message);
-  console.log(`FAIL: ${e.message}`);
-} finally {
-  await browser.close();
-  server.kill();
 }
+
+await withGpu(async () => {
+  const { origin, close } = await serve(root);
+  let browser;
+  try {
+    browser = await chromium.launch({
+      channel: 'chrome',
+      headless: !gpu,
+      args: [
+        ...(gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
+        '--autoplay-policy=no-user-gesture-required',
+      ],
+    });
+    await test(origin, browser);
+  } catch (e) {
+    failures.push(e.message);
+    console.log(`FAIL: ${e.message}`);
+  } finally {
+    await browser?.close();
+    close();
+  }
+});
 if (failures.length) process.exit(1);
