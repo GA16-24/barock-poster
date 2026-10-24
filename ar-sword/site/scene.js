@@ -252,16 +252,26 @@ export function setGaze(ray) {
   gaze = ray && gazeRay.copy(ray).applyMatrix4(stageInv.copy(stage.matrixWorld).invert()).intersectPlane(gazePlane, gazeHit);
 }
 
-// Where a thread or a glance meets an object: just in front of its niche, or the back edge of the map table.
-const anchor = (e) => e.kind === 'map'
-  ? e.rest.clone().add(new THREE.Vector3(0, 0.1, -0.38))
-  : e.rest.clone().add(new THREE.Vector3(0, 0, (e.kind === 'item' ? NICHE.depth : 0.1) + 0.04));
-// Gold threads are quadratic curves through a pass point: over the poets for a pair, around the thermostat otherwise.
+// Where a thread meets an object: just in front of its niche, under a poet's name plate (so no thread crosses his
+// face), or the back edge of the map table.
+const anchor = (e) => e.kind === 'map' ? e.rest.clone().add(new THREE.Vector3(0, 0.1, -0.38))
+  : e.kind === 'head' ? new THREE.Vector3(e.rest.x, e.rest.y - MEDALLION.plateDrop - 0.035, MEDALLION.depth + 0.03)
+  : e.rest.clone().add(new THREE.Vector3(0, 0, e.kind === 'item' ? 0.16 : 0.14));
+// Where heads look: the face of a poet, the thread end of anything else.
+const facePoint = (e) => (e.kind === 'head' ? e.rest.clone().setZ(0.3) : anchor(e));
+const P = (x, y, z) => new THREE.Vector3(x, y, z);
+// Gold threads stay out of the medallions and off the thermostat: a pair arcs over the poets' heads (upper rows)
+// or under the book niche (lower rows); a poet's threads leave his name plate and swing out on side `sx`.
 function route(from, to, sx) {
   const a = anchor(from), b = anchor(to);
-  const via = from.kind === 'item' ? new THREE.Vector3(...TOP_ARCH) : a.clone().add(b).multiplyScalar(0.5).add({ x: sx * 0.24, y: 0, z: 0.32 });
-  const ctrl = via.clone().multiplyScalar(2).sub(a.clone().add(b).multiplyScalar(0.5));
-  return new THREE.QuadraticBezierCurve3(a, ctrl, b).getPoints(20);
+  if (from.kind === 'item') {
+    const y = from.rest.y > 0 ? [0.64, 0.675] : [-0.5, -0.47];
+    return [a, P(a.x * 0.8, y[0], 0.3), P(0, y[1], 0.32), P(b.x * 0.8, y[0], 0.3), b];
+  }
+  const poet = from.kind === 'head' ? from : to.kind === 'head' ? to : null;
+  const map = from.kind === 'map' || to.kind === 'map';
+  const x = poet ? sx * Math.max(map ? 0.3 : 0.2, Math.abs(poet.rest.x) + (map ? 0.1 : -0.06)) : sx * 0.2;
+  return [a, P(x, (a.y + b.y) / 2, map ? 0.32 : 0.24), b];
 }
 
 const head = (author) => entries.find((e) => e.kind === 'head' && e.author === author);
@@ -288,7 +298,7 @@ export function select(e) {
     const poet = e.kind === 'item' ? null : e.kind === 'head' ? e : r.kind === 'head' ? r : head(e.author);
     links[i].set(route(e, r, Math.sign(poet?.rest.x) || (i ? 1 : -1)));
   });
-  lookAt = anchor(e);
+  lookAt = facePoint(e);
   if (e.kind === 'item') lookAt.z += LIFT.item;
   if (e.kind === 'item') accent.position.set(related[0].rest.x, related[0].rest.y, 0.26);
 }

@@ -245,16 +245,16 @@ export function createLink() {
   const group = new THREE.Group();
   group.visible = false;
   const core = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xf6dc96, toneMapped: false }));
-  const halo = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xe0a83a, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-  const bead = new THREE.Mesh(new THREE.SphereGeometry(0.011, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff1c4, toneMapped: false }));
-  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffc860, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  const halo = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xe0a83a, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  const bead = new THREE.Mesh(new THREE.SphereGeometry(0.007, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff1c4, toneMapped: false }));
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.016, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffc860, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
   group.add(core, halo, bead, glow);
   let curve = null, p = 0, goal = 0;
   return {
     group,
     set(points) {
       curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
-      for (const [m, r, radial] of [[core, 0.005, 6], [halo, 0.017, 8]]) {
+      for (const [m, r, radial] of [[core, 0.0028, 6], [halo, 0.008, 8]]) {
         m.geometry.dispose();
         m.geometry = new THREE.TubeGeometry(curve, SEGMENTS, r, radial);
         m.userData.radial = radial;
