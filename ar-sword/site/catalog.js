@@ -3,15 +3,16 @@
 // Texts live in data/texts.json under the same ids, so grabbing any object looks up texts[id].
 
 // Every prop gets one shadow-box niche of the same size on a grid. A pair shares a slot: Adel hangs at -x, Volk at +x.
-// `fit` is the box an object is scaled into (`depth` caps how far it may reach out of the niche).
-export const NICHE = { w: 0.33, h: 0.35, depth: 0.14, fit: [0.25, 0.27], reach: 0.2 };
-export const COLS = [0.7, 1.05];
-export const ROWS = [0.55, 0.185, -0.18, -0.545];
+// `fit` is the box an object is scaled into and `reach` caps its depth; round props would otherwise shrink to the
+// niche depth, so they may stand out of the niche toward the viewer.
+export const NICHE = { w: 0.33, h: 0.37, depth: 0.14, fit: [0.27, 0.3], reach: 0.27, z: 0.085 };
+export const COLS = [0.615, 0.955];
+export const ROWS = [0.57, 0.19, -0.19, -0.57];
 
 export const ZONES = {
-  adel: { title: 'Der Adel', x: -0.875, style: 'adel' },
+  adel: { title: 'Der Adel', x: -(COLS[0] + COLS[1]) / 2, style: 'adel' },
   autoren: { title: 'Drei Dichter', x: 0, style: 'autoren' },
-  volk: { title: 'Das Volk', x: 0.875, style: 'volk' },
+  volk: { title: 'Das Volk', x: (COLS[0] + COLS[1]) / 2, style: 'volk' },
 };
 // One line of titles above everything.
 export const TITLE_Y = 0.795;
@@ -42,7 +43,7 @@ const side = { adel: -1, volk: 1 };
 export const ITEMS = PAIRS.flatMap(({ slot: [col, row], adel, volk }) => [['adel', adel, volk], ['volk', volk, adel]].map(([zone, item, other]) => ({
   zone,
   model: `models/${zone}/${item.id}.glb`,
-  at: [side[zone] * COLS[col], ROWS[row], NICHE.depth / 2],
+  at: [side[zone] * COLS[col], ROWS[row], NICHE.z],
   slot: [col, row],
   partner: other.id,
   ...item,
@@ -55,24 +56,24 @@ export const AUTHORS = [
   {
     id: 'andreae', name: 'Johann Valentin Andreae', life: '1586–1654',
     head: 'models/heads/andreae.glb', cover: 'img/works/andreae.jpg', map: 'models/maps/tuebingen.glb',
-    at: [-0.32, 0.4, 0.07],
+    at: [-0.285, 0.38, 0.07],
   },
   {
     id: 'bidermann', name: 'Jakob Bidermann', life: '1578–1639', reconstruction: true,
     head: 'models/heads/bidermann.glb', cover: 'img/works/bidermann.jpg', map: 'models/maps/muenchen.glb',
-    at: [0, 0.4, 0.07],
+    at: [0, 0.38, 0.07],
   },
   {
     id: 'birken', name: 'Sigmund von Birken', life: '1626–1681',
     head: 'models/heads/birken.glb', cover: 'img/works/birken.jpg', map: 'models/maps/nuernberg.glb',
-    at: [0.32, 0.4, 0.07],
+    at: [0.285, 0.38, 0.07],
   },
 ];
 
 export const HEAD_SIZE = 0.2;
 // Medallion size and the width of the name plate that hangs on its lower rim; the plates are narrower than the
-// 0.32 m between medallions, so they cannot overlap at any distance.
-export const MEDALLION = { w: 0.3, h: 0.38, depth: 0.13, plate: 0.24, plateDrop: 0.185 };
+// 0.285 m between medallions, so they cannot overlap at any distance.
+export const MEDALLION = { w: 0.27, h: 0.36, depth: 0.13, plate: 0.24, plateDrop: 0.175 };
 // The author map is a flat display table 1 m across; the book lies in its own niche below the thermostat.
 export const MAP = { size: 1.0, at: [0, -0.7, 0.62] };
 export const BOOK = { size: 0.19, at: [0, -0.25, 0.07], niche: { w: 0.25, h: 0.3, depth: 0.12 } };
