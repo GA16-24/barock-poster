@@ -23,7 +23,7 @@ export const TITLE_Y = CORNICE.y + CORNICE.frieze / 2;
 export const ARCH = { halfWidth: 0.095, band: 0.014, base: -0.395, spring: 0.02 };
 
 // Black lacquer with a gilt lip on red velvet for the nobility, raw pine on linen for the common people, gilt on
-// deep blue for the poets. `back` runs from the dark edge to the lit center of the niche.
+// deep blue for the poets. The names pick canvas textures in gallery.js.
 export const FRAME_STYLES = {
   adel: { frame: 'lacquer', lip: true, back: 'velvet', side: 0x2a0a10, drape: 'velvet' },
   volk: { frame: 'pine', lip: false, back: 'linen', side: 0x6b4a2a, drape: 'linen' },
