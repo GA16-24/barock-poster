@@ -99,7 +99,7 @@ await withGpu(async () => {
         console.log(`tap ${id} at ${t}s: not on screen, skipped`);
         continue;
       }
-      const under = await page.evaluate(([x, y]) => { const el = document.elementFromPoint(x, y); return el && `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${el.className ? `.${el.className}` : ''}`; }, [o.x, o.y]);
+      const under = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('#card, .label') ? 'the card or a label' : __anchor.children[0].visible ? 'the scene' : 'a frame where the scene was lost', [o.x, o.y]);
       await page.mouse.click(o.x, o.y);
       const got = await page.evaluate(() => __ar.selected());
       console.log(`tap ${id} at ${t}s on (${o.x.toFixed(0)}, ${o.y.toFixed(0)}) -> selected ${got}${got === id ? '' : ` (the tap landed on ${under})`}`);
