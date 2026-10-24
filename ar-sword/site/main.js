@@ -260,6 +260,7 @@ ui.initLabels(labels, (id) => trigger(entries.find((e) => e.id === id)));
 globalThis.__ar = {
   setHand: (h) => { fakeHand = h; },
   frameMs: () => frameStats.total / Math.max(frameStats.n, 1),
+  selected: () => selectedEntry()?.id ?? null,
   objects: () => entries.map((e) => {
     const [u, v] = uvOf(e.holder) ?? [NaN, NaN];
     const [x, y] = ui.toScreen(u, v);
