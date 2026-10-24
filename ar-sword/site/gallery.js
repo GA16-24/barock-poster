@@ -118,7 +118,6 @@ const DRAW = {
   },
   damask,
   lacquer: (ctx, w, h) => grain(ctx, w, h, '#16100d', '#050303', '#3a2a1e', 60),
-  // Raw pine: pale grain with the dark seams of boards nailed side by side.
   pine(ctx, w, h) {
     grain(ctx, w, h, '#a8763f', '#5e3b1c', '#c99a62', 160);
     ctx.fillStyle = 'rgba(50,28,10,0.7)';
@@ -228,7 +227,7 @@ export function buildNiche({ shape, w, h, depth, style }) {
   group.add(interior, frame, veil);
 
   return {
-    group, depth, w, h, frame, oval,
+    group,
     // grow: 0..1 the closed case comes out of the wall. open: 0..1 the drapes part. glow lights the niche, dim darkens it.
     set(grow, glow, dim, open = 1) {
       group.visible = grow > 0.001;
@@ -251,8 +250,6 @@ const drapeGeometry = (() => {
   return g;
 })();
 
-// The gilt cornice over everything: a lacquer frieze between a bead below and a moulded cap above, with the poets'
-// cartouche in the middle. It grows outward from the cartouche.
 function cartoucheTexture() {
   return canvasTexture(1024, 384, (ctx, w, h) => {
     const cx = w / 2, cy = h * 0.56;
@@ -294,6 +291,8 @@ function cartoucheTexture() {
     ctx.fill();
   });
 }
+// The gilt cornice over everything: a lacquer frieze between a bead below and a moulded cap above, with the poets'
+// cartouche in the middle. It grows outward from the cartouche.
 export function buildCornice() {
   const { halfWidth: hw, y, frieze } = CORNICE;
   const group = new THREE.Group();
@@ -376,7 +375,6 @@ export function buildConsole() {
   };
 }
 
-// A little floating dust in the light, drifting upward and wrapping around.
 export function buildDust(n = 70) {
   const seeds = Array.from({ length: n }, () => ({ x: Math.random() * 2.4 - 1.2, y: Math.random() * 1.6, z: 0.1 + Math.random() * 0.6, s: 0.01 + Math.random() * 0.02, p: Math.random() * 6.28 }));
   const geo = new THREE.BufferGeometry();

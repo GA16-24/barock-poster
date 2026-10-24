@@ -32,7 +32,8 @@ export const FRAME_STYLES = {
 
 // Antithesis, the signature device of Baroque writing, as the layout rule: both sides have eight things and each has a
 // counterpart across the poets. `slot` is [column, row] into COLS and ROWS; `roll` turns a long thin object to
-// the niche diagonal; `idle` names its motion: [kind, amplitude]; `candle` puts the one flickering light at the object; `wheel` is the disc (in model coordinates) that turns.
+// the niche diagonal; `idle` names its motion: [kind, amplitude]; `candle` puts the one flickering light at the
+// object; `wheel` is the disc (in model coordinates) that turns.
 export const PAIRS = [
   { slot: [1, 0], adel: { id: 'kronleuchter', candle: true, idle: ['sway', 0.07] }, volk: { id: 'spinnrad', wheel: { center: [-0.406, 0.366], radius: 0.6, z: [-0.21, -0.03], rate: 1.4 }, idle: ['turn', 0.3] } },
   { slot: [0, 0], adel: { id: 'krone', idle: ['turn', 0.5] }, volk: { id: 'brot', idle: ['breath', 0.014] } },

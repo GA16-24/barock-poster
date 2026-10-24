@@ -139,7 +139,6 @@ async function loadModel(e, url) {
     : e.size / Math.max(dims.x, dims.y, dims.z);
   model.position.copy(box.getCenter(new THREE.Vector3())).multiplyScalar(-k);
   model.scale.setScalar(k);
-  e.size = Math.max(dims.x, dims.y, dims.z) * k;
   await adopt(e, model);
   if (gltf.animations.length) {
     e.mixer = new THREE.AnimationMixer(model);
@@ -153,7 +152,7 @@ const offCenter = (x) => (Math.abs(x) < 0.01 ? 0 : 1);
 for (const item of ITEMS) {
   const [col, row] = item.slot;
   const far = Math.hypot(COLS[col], ROWS[row]) - Math.hypot(COLS[0], ROWS[1]);
-  const e = addEntry({ ...item, kind: 'item', size: NICHE.fit[0] });
+  const e = addEntry({ ...item, kind: 'item' });
   hang(e, buildNiche({ shape: 'rect', ...NICHE, style: ZONES[item.zone].style }), 0.15 + far * 0.5);
   e.drape = 0.8 + far * 1.6;
   e.t0 = e.drape + 0.15;
@@ -257,7 +256,6 @@ export function setGaze(ray) {
 const anchor = (e) => e.kind === 'map' ? e.rest.clone().add(new THREE.Vector3(0, 0.1, -0.38))
   : e.kind === 'head' ? new THREE.Vector3(e.rest.x, e.rest.y - MEDALLION.plateDrop - 0.035, MEDALLION.depth + 0.03)
   : e.rest.clone().add(new THREE.Vector3(0, 0, e.kind === 'item' ? 0.16 : 0.14));
-// Where heads look: the face of a poet, the thread end of anything else.
 const facePoint = (e) => (e.kind === 'head' ? e.rest.clone().setZ(0.3) : anchor(e));
 const P = (x, y, z) => new THREE.Vector3(x, y, z);
 // Gold threads stay out of the medallions and off the thermostat: a pair arcs over the poets' heads (upper rows)
@@ -299,8 +297,10 @@ export function select(e) {
     links[i].set(route(e, r, Math.sign(poet?.rest.x) || (i ? 1 : -1)));
   });
   lookAt = facePoint(e);
-  if (e.kind === 'item') lookAt.z += LIFT.item;
-  if (e.kind === 'item') accent.position.set(related[0].rest.x, related[0].rest.y, 0.26);
+  if (e.kind === 'item') {
+    lookAt.z += LIFT.item;
+    accent.position.set(related[0].rest.x, related[0].rest.y, 0.26);
+  }
 }
 export const selectedEntry = () => selected;
 
@@ -314,7 +314,6 @@ function aim(e, p, dt, w = 7.7, zeta = 0.58) {
   spring(e.pitchS, pitch, dt, w, zeta);
 }
 
-// Every few seconds a head glances at a neighbor, at the hand cursor, or back at the viewer.
 function glance(e, t) {
   if (t >= e.glanceUntil) {
     e.glanceUntil = t + 1.6 + Math.random() * 2.6;
@@ -364,7 +363,7 @@ export function updateScene(t, dt, age = Infinity) {
     if (e.kind === 'head') aim(e, selected ? (selected !== e ? lookAt : null) : glance(e, t), dt);
 
     const h = e.holder;
-    // Out of its niche (or up from the console) on a spring; restarts when the entrance replays.
+    // The spring restarts when the entrance replays.
     const out = age >= e.t0;
     if (out) spring(e.enter, 1, dt, 11, 0.45);
     else e.enter.x = e.enter.v = 0;
@@ -399,7 +398,7 @@ export function updateScene(t, dt, age = Infinity) {
   accent.intensity = ease(accent.intensity, partner ? 0.4 : 0, dt, 6);
 }
 
-const invM = new THREE.Matrix4(), localRay = new THREE.Ray(), hit = new THREE.Vector3();
+const inv = new THREE.Matrix4(), localRay = new THREE.Ray(), hit = new THREE.Vector3();
 
 // Nearest object under the ray: an exact mesh hit wins; otherwise the nearest bounding box, which forgives a hand
 // that grabs slightly beside a thin object like the rapier.
@@ -407,8 +406,8 @@ export function pick(raycaster) {
   const candidates = [];
   for (const e of entries) {
     if (!e.holder.visible || e.show < 0.5 || e.holder.scale.x < 0.5) continue;
-    invM.copy(e.holder.matrixWorld).invert();
-    localRay.copy(raycaster.ray).applyMatrix4(invM);
+    inv.copy(e.holder.matrixWorld).invert();
+    localRay.copy(raycaster.ray).applyMatrix4(inv);
     if (!localRay.intersectBox(e.box, hit)) continue;
     candidates.push({ e, d: hit.applyMatrix4(e.holder.matrixWorld).distanceTo(raycaster.ray.origin) });
   }

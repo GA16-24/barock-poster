@@ -20,9 +20,9 @@ export function toScreen(u, v) {
   const c = cover();
   return [c.x + u * c.w, c.y + v * c.h];
 }
-export function onScreen(uv, margin = 16) {
+export function onScreen(uv) {
   const [x, y] = toScreen(uv[0], uv[1]);
-  return x > margin && x < innerWidth - margin && y > margin && y < innerHeight - margin;
+  return x > 16 && x < innerWidth - 16 && y > 16 && y < innerHeight - 16;
 }
 export function toVideo(px, py) {
   const c = cover();
@@ -120,7 +120,6 @@ export function showCard({ title, text, facts, note, pair }) {
   cardEl.classList.add('open');
   corner = null;
   cardEl.scrollTop = 0;
-  // The card grows out of its object and settles with a little overshoot.
   cardEl.animate(
     [{ opacity: 0, scale: 0.88, translate: '0 10px' }, { opacity: 1, scale: 1, translate: '0 0' }],
     { duration: 320, easing: 'cubic-bezier(0.2, 1.35, 0.4, 1)' },
