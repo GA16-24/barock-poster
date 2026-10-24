@@ -40,11 +40,14 @@ const smooth = (x) => x * x * (3 - 2 * x);
 const backOut = (x) => 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2;
 const ease = (cur, goal, dt, rate) => cur + (goal - cur) * (1 - Math.exp(-dt * rate));
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-const spring = (s, goal, dt, k = 90, c = 11) => {
-  const h = Math.min(dt, 0.05);
-  s.v += ((goal - s.x) * k - s.v * c) * h;
-  s.x += s.v * h;
-};
+// Underdamped, so whatever comes forward overshoots by about a fifth and settles. Substeps keep it stable at any dt.
+function spring(s, goal, dt, w = 13, zeta = 0.45) {
+  const n = Math.ceil(dt * 120), h = dt / n;
+  for (let i = 0; i < n; i++) {
+    s.v += (w * w * (goal - s.x) - 2 * zeta * w * s.v) * h;
+    s.x += s.v * h;
+  }
+}
 
 function addEntry({ id, kind, author = null, size, at, yaw = 0, ...rest }) {
   const holder = new THREE.Group();
@@ -307,11 +310,11 @@ export const selectedEntry = () => selected;
 const GLOW = new THREE.Color(0.07, 0.05, 0.015);
 const V = new THREE.Vector3();
 
-function aim(e, p, dt, k = 60, c = 9) {
+function aim(e, p, dt, w = 7.7, zeta = 0.58) {
   const yaw = p ? THREE.MathUtils.clamp(Math.atan2(p.x - e.rest.x, p.z - e.rest.z), -0.85, 0.85) : 0;
   const pitch = p ? THREE.MathUtils.clamp(-Math.atan2(p.y - e.rest.y, Math.hypot(p.x - e.rest.x, p.z - e.rest.z)) * 0.8, -0.3, 0.3) : 0;
-  spring(e.yawS, yaw, dt, k, c);
-  spring(e.pitchS, pitch, dt, k, c);
+  spring(e.yawS, yaw, dt, w, zeta);
+  spring(e.pitchS, pitch, dt, w, zeta);
 }
 
 // Every few seconds a head glances at a neighbor, at the hand cursor, or back at the viewer.
