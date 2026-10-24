@@ -19,7 +19,6 @@ export const entries = [];
 // its author, so tapping the plate works like grabbing the head.
 export const labels = [];
 
-const MAP_TILT = 0.75;
 const LIFT = 0.1;
 const BOOK_YAW = 0.45;
 
@@ -54,13 +53,14 @@ const compileCamera = new THREE.PerspectiveCamera();
 async function adopt(e, object) {
   const inner = new THREE.Group();
   inner.add(object);
-  if (e.kind === 'map') inner.rotation.x = MAP_TILT;
   inner.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(inner);
   e.holder.add(inner);
   object.traverse((o) => {
     if (!o.isMesh) return;
-    o.castShadow = true;
+    // The invisible wall would draw a map's big shadow as a grey blob over whatever stands in front of the real wall,
+    // like a desk.
+    o.castShadow = e.kind !== 'map';
     o.receiveShadow = e.kind === 'map';
     for (const m of [o.material].flat()) {
       if (m.emissive && !e.mats.includes(m)) e.mats.push(m);

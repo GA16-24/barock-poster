@@ -50,7 +50,7 @@ export const AUTHORS = [
 ];
 
 export const HEAD_SIZE = 0.2;
-export const MAP = { size: 0.5, at: [0, -0.4, 0.28] };
+export const MAP = { size: 1.0, at: [0, -0.62, 0.62] };
 export const BOOK = { size: 0.16, at: [-0.33, -0.16, 0.2] };
 
 export const ALL_IDS = [
