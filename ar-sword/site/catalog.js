@@ -1,57 +1,81 @@
-// Everything the room shows. Placement is in meters in the thermostat's frame: origin at the LCD center,
-// x to the right along the wall, y up, z out of the wall toward the viewer. `size` is the longest side.
+// Everything the room shows, hung like a picture gallery. Placement is in meters in the thermostat's frame: origin at
+// the LCD center, x to the right along the wall, y up, z out of the wall toward the viewer.
 // Texts live in data/texts.json under the same ids, so grabbing any object looks up texts[id].
 
+// Every prop gets one shadow-box niche of the same size on a grid. A pair shares a slot: Adel hangs at -x, Volk at +x.
+// `fit` is the box an object is scaled into (`depth` caps how far it may reach out of the niche).
+export const NICHE = { w: 0.33, h: 0.35, depth: 0.14, fit: [0.25, 0.27], reach: 0.2 };
+export const COLS = [0.7, 1.05];
+export const ROWS = [0.55, 0.185, -0.18, -0.545];
+
 export const ZONES = {
-  adel: { title: 'Der Adel', x: -0.8 },
-  autoren: { title: 'Drei Dichter', x: 0 },
-  volk: { title: 'Das Volk', x: 0.8 },
+  adel: { title: 'Der Adel', x: -0.875, style: 'adel' },
+  autoren: { title: 'Drei Dichter', x: 0, style: 'autoren' },
+  volk: { title: 'Das Volk', x: 0.875, style: 'volk' },
+};
+// One line of titles above everything.
+export const TITLE_Y = 0.795;
+
+// Gilt frames on crimson for the nobility, plain dark wood on grey linen for the common people, gilt on deep blue for the poets.
+// `back` runs from the dark edge to the lit center of the niche.
+export const FRAME_STYLES = {
+  adel: { frame: 0xd8aa4a, metal: 0.9, rough: 0.3, back: ['#3c0f1a', '#7d2a3a'], weave: 'damask', ridge: true },
+  volk: { frame: 0x3b2514, metal: 0.05, rough: 0.55, back: ['#2a2c25', '#6b6d5d'], weave: 'linen', ridge: false },
+  autoren: { frame: 0xd8aa4a, metal: 0.9, rough: 0.3, back: ['#0b1f2a', '#245466'], weave: 'damask', ridge: true },
 };
 
-export const ITEMS = [
-  { id: 'schloss', zone: 'adel', model: 'models/adel/schloss.glb', size: 0.4, at: [-0.95, -0.36, 0.23] },
-  { id: 'krone', zone: 'adel', model: 'models/adel/krone.glb', size: 0.16, at: [-0.6, 0.3, 0.12] },
-  { id: 'peruecke', zone: 'adel', model: 'models/adel/peruecke.glb', size: 0.2, at: [-1.0, 0.3, 0.13] },
-  { id: 'kutsche', zone: 'adel', model: 'models/adel/kutsche.glb', size: 0.28, at: [-0.6, -0.38, 0.17] },
-  { id: 'degen', zone: 'adel', model: 'models/adel/degen.glb', size: 0.36, at: [-1.08, -0.01, 0.1] },
-  { id: 'spiegel', zone: 'adel', model: 'models/adel/spiegel.glb', size: 0.3, at: [-0.6, 0.0, 0.05] },
-  { id: 'kronleuchter', zone: 'adel', model: 'models/adel/kronleuchter.glb', size: 0.26, at: [-0.8, 0.55, 0.16] },
-  { id: 'pokal', zone: 'adel', model: 'models/adel/pokal.glb', size: 0.14, at: [-0.8, 0.0, 0.12] },
-
-  { id: 'bauernhaus', zone: 'volk', model: 'models/volk/bauernhaus.glb', size: 0.4, at: [0.95, -0.36, 0.23] },
-  { id: 'pflug', zone: 'volk', model: 'models/volk/pflug.glb', size: 0.3, at: [0.6, -0.38, 0.18] },
-  { id: 'sense', zone: 'volk', model: 'models/volk/sense.glb', size: 0.38, at: [1.08, 0.0, 0.1] },
-  { id: 'brot', zone: 'volk', model: 'models/volk/brot.glb', size: 0.14, at: [0.6, 0.3, 0.12] },
-  { id: 'pestmaske', zone: 'volk', model: 'models/volk/pestmaske.glb', size: 0.2, at: [1.0, 0.3, 0.13] },
-  { id: 'helm', zone: 'volk', model: 'models/volk/helm.glb', size: 0.2, at: [0.58, 0.02, 0.12] },
-  { id: 'fass', zone: 'volk', model: 'models/volk/fass.glb', size: 0.18, at: [0.8, 0.0, 0.13] },
-  { id: 'spinnrad', zone: 'volk', model: 'models/volk/spinnrad.glb', size: 0.26, at: [0.8, 0.52, 0.15] },
+// Antithesis, the signature device of Baroque writing, as the layout rule: both sides have eight things and each has a
+// counterpart across the poets. `slot` is [column, row] into COLS and ROWS; `roll` turns a long thin object to
+// the niche diagonal; `idle` names its motion: [kind, amplitude]; `candle` puts the one flickering light at the object; `wheel` is the disc (in model coordinates) that turns.
+export const PAIRS = [
+  { slot: [1, 0], adel: { id: 'kronleuchter', candle: true, idle: ['sway', 0.07] }, volk: { id: 'spinnrad', wheel: { center: [-0.406, 0.366], radius: 0.6, z: [-0.21, -0.03], rate: 1.4 }, idle: ['turn', 0.3] } },
+  { slot: [0, 0], adel: { id: 'krone', idle: ['turn', 0.5] }, volk: { id: 'brot', idle: ['breath', 0.014] } },
+  { slot: [0, 1], adel: { id: 'peruecke', idle: ['sway', 0.05] }, volk: { id: 'pestmaske', idle: ['turn', 0.35] } },
+  { slot: [1, 1], adel: { id: 'spiegel', idle: ['turn', 0.4] }, volk: { id: 'sense', roll: 0.62, idle: ['tilt', 0.05] } },
+  { slot: [0, 2], adel: { id: 'degen', roll: -0.62, idle: ['tilt', 0.05] }, volk: { id: 'helm', idle: ['turn', 0.4] } },
+  { slot: [1, 2], adel: { id: 'pokal', idle: ['turn', 0.6] }, volk: { id: 'fass', idle: ['breath', 0.012] } },
+  { slot: [0, 3], adel: { id: 'schloss', idle: ['turn', 0.18] }, volk: { id: 'bauernhaus', idle: ['turn', 0.18] } },
+  { slot: [1, 3], adel: { id: 'kutsche', idle: ['rock', 0.035] }, volk: { id: 'pflug', idle: ['rock', 0.02] } },
 ];
+
+const side = { adel: -1, volk: 1 };
+export const ITEMS = PAIRS.flatMap(({ slot: [col, row], adel, volk }) => [['adel', adel, volk], ['volk', volk, adel]].map(([zone, item, other]) => ({
+  zone,
+  model: `models/${zone}/${item.id}.glb`,
+  at: [side[zone] * COLS[col], ROWS[row], NICHE.depth / 2],
+  slot: [col, row],
+  partner: other.id,
+  ...item,
+})));
 
 // No portrait of Bidermann survives, so his head is a reconstruction (`reconstruction: true`) and says so.
 // Grabbing a head shows the author text and switches the map below the thermostat to that author's place.
-// The book (`${id}-werk`) and the map (`${id}-ort`) are grabbable too.
+// The book (`${id}-werk`) and the map (`${id}-ort`) are grabbable too. The three heads sit in oval medallions.
 export const AUTHORS = [
   {
     id: 'andreae', name: 'Johann Valentin Andreae', life: '1586–1654',
     head: 'models/heads/andreae.glb', cover: 'img/works/andreae.jpg', map: 'models/maps/tuebingen.glb',
-    at: [-0.26, 0.3, 0.15],
+    at: [-0.32, 0.4, 0.07],
   },
   {
     id: 'bidermann', name: 'Jakob Bidermann', life: '1578–1639', reconstruction: true,
     head: 'models/heads/bidermann.glb', cover: 'img/works/bidermann.jpg', map: 'models/maps/muenchen.glb',
-    at: [0, 0.3, 0.15],
+    at: [0, 0.4, 0.07],
   },
   {
     id: 'birken', name: 'Sigmund von Birken', life: '1626–1681',
     head: 'models/heads/birken.glb', cover: 'img/works/birken.jpg', map: 'models/maps/nuernberg.glb',
-    at: [0.26, 0.3, 0.15],
+    at: [0.32, 0.4, 0.07],
   },
 ];
 
 export const HEAD_SIZE = 0.2;
-export const MAP = { size: 1.0, at: [0, -0.62, 0.62] };
-export const BOOK = { size: 0.16, at: [-0.33, -0.16, 0.2] };
+// Medallion size and the width of the name plate that hangs on its lower rim; the plates are narrower than the
+// 0.32 m between medallions, so they cannot overlap at any distance.
+export const MEDALLION = { w: 0.3, h: 0.38, depth: 0.13, plate: 0.24, plateDrop: 0.185 };
+// The author map is a flat display table 1 m across; the book lies in its own niche below the thermostat.
+export const MAP = { size: 1.0, at: [0, -0.7, 0.62] };
+export const BOOK = { size: 0.19, at: [0, -0.25, 0.07], niche: { w: 0.25, h: 0.3, depth: 0.12 } };
 
 export const ALL_IDS = [
   ...ITEMS.map((i) => i.id),

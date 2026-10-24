@@ -6,7 +6,7 @@ const ASPECT = 0.72;
 const THICK = 0.2;
 const BOARD = 0.03;
 
-function canvasTexture(w, h, draw) {
+export function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
