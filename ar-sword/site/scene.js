@@ -163,7 +163,7 @@ const bookNiche = buildNiche({ shape: 'rect', ...BOOK.niche, style: ZONES.autore
 for (const a of AUTHORS) {
   const e = addEntry({ id: a.id, kind: 'head', author: a, size: HEAD_SIZE, at: a.at });
   hang(e, buildNiche({ shape: 'oval', w: MEDALLION.w, h: MEDALLION.h, depth: MEDALLION.depth, style: ZONES.autoren.style }), 0.2 + offCenter(a.at[0]) * 0.1);
-  addEntry({ id: `${a.id}-ort`, kind: 'map', author: a, size: MAP.size, at: MAP.at }).t0 = 1.35;
+  addEntry({ id: `${a.id}-ort`, kind: 'map', author: a, size: MAP.size, at: MAP.at }).t0 = 1.2;
   const b = addEntry({ id: `${a.id}-werk`, kind: 'book', author: a, size: BOOK.size, at: BOOK.at, yaw: BOOK_YAW });
   b.book = buildBook({ size: BOOK.size, cover: a.cover, title: a.name });
   hang(b, bookNiche, 0.2);
@@ -176,7 +176,7 @@ stage.add(cornice.group, arch.group, table.group);
 const structure = (age) => {
   cornice.set(smooth(ramp(age, 0.05, 0.5)), backOut(ramp(age, 0, 0.4)));
   arch.set(smooth(ramp(age, 0.1, 0.6)));
-  table.set(smooth(ramp(age, 0.5, 0.7)));
+  table.set(smooth(ramp(age, 1.0, 0.4)));
 };
 const dust = buildDust();
 stage.add(dust.points);
