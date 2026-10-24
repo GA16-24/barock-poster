@@ -7,13 +7,15 @@ import { withGpu } from './gpu-lock.mjs';
 // Plays a phone video into the app as its camera, in real time, and records what the screen shows.
 // The video has no motion data, so the scene only stays while the thermostat is in view.
 // --tap 6.5:birken taps the object with that id when the clip reaches 6.5 s, with a real pointer at its screen
-// position; --from and --to cut the clip first (tap times count from the cut).
+// position; --from and --to cut the clip first (tap times count from the cut). --watch krone,brot prints, every
+// half second, which of those objects are wholly on screen and how big, to choose tap times.
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
-  options: { tap: { type: 'string', multiple: true, default: [] }, from: { type: 'string' }, to: { type: 'string' } },
+  options: { tap: { type: 'string', multiple: true, default: [] }, from: { type: 'string' }, to: { type: 'string' }, watch: { type: 'string', default: '' } },
 });
 const [video, output = 'test/out/demo.mp4'] = positionals;
 if (!video) throw new Error('usage: npm run demo -- <phone video> [out.mp4] [--from s] [--to s] [--tap s:id ...]');
+const VIEW = { width: 405, height: 720 };
 const taps = opts.tap.map((s) => ({ t: +s.split(':')[0], id: s.split(':')[1] })).sort((a, b) => a.t - b.t);
 const cut = [...(opts.from ? ['-ss', opts.from] : []), ...(opts.to ? ['-to', opts.to] : [])];
 const root = new URL('..', import.meta.url).pathname;
@@ -37,7 +39,7 @@ await withGpu(async () => {
     ],
   });
   try {
-    const page = await browser.newPage({ viewport: { width: 405, height: 720 }, deviceScaleFactor: 2 });
+    const page = await browser.newPage({ viewport: VIEW, deviceScaleFactor: 2 });
     page.on('pageerror', (e) => console.log(`page error: ${e.message}`));
     await page.addInitScript(() => {
       navigator.mediaDevices.getUserMedia = async () => {
@@ -79,15 +81,28 @@ await withGpu(async () => {
     await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 90 });
     await page.waitForTimeout(1000);
     await page.click('#go');
+    await page.evaluate((ids) => {
+      globalThis.__watch = [];
+      if (!ids.length) return;
+      // A rect that touches the viewport edge is cut off by it.
+      const whole = (r) => r[0] > 0 && r[1] > 0 && r[2] < innerWidth && r[3] < innerHeight;
+      setInterval(() => {
+        if (!globalThis.__source || __source.ended) return;
+        const seen = __ar.objects().filter((o) => ids.includes(o.id) && o.shown && o.rect && whole(o.rect));
+        __watch.push(`${__source.currentTime.toFixed(1)}s ${seen.map((o) => `${o.id} ${(o.rect[2] - o.rect[0]).toFixed(0)}x${(o.rect[3] - o.rect[1]).toFixed(0)}`).join(', ')}`);
+      }, 500);
+    }, opts.watch ? opts.watch.split(',') : []);
     for (const { t, id } of taps) {
       await page.waitForFunction((t) => globalThis.__source?.currentTime >= t, t, { timeout: 300000, polling: 'raf' });
       const o = (await page.evaluate(() => __ar.objects())).find((o) => o.id === id);
-      if (!o?.shown) {
+      if (!o?.shown || !(o.x > 0 && o.x < VIEW.width && o.y > 0 && o.y < VIEW.height)) {
         console.log(`tap ${id} at ${t}s: not on screen, skipped`);
         continue;
       }
+      const under = await page.evaluate(([x, y]) => { const el = document.elementFromPoint(x, y); return el && `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${el.className ? `.${el.className}` : ''}`; }, [o.x, o.y]);
       await page.mouse.click(o.x, o.y);
-      console.log(`tap ${id} at ${t}s on (${o.x.toFixed(0)}, ${o.y.toFixed(0)}) -> selected ${await page.evaluate(() => __ar.selected())}`);
+      const got = await page.evaluate(() => __ar.selected());
+      console.log(`tap ${id} at ${t}s on (${o.x.toFixed(0)}, ${o.y.toFixed(0)}) -> selected ${got}${got === id ? '' : ` (the tap landed on ${under})`}`);
     }
     await page.waitForFunction(() => globalThis.__source?.ended, null, { timeout: 300000, polling: 500 });
     await page.waitForTimeout(500);
@@ -97,6 +112,7 @@ await withGpu(async () => {
     const perSecond = [];
     for (let i = 0; i < shown.length; i += 30) perSecond.push(Math.round((shown.slice(i, i + 30).filter(Boolean).length / 30) * 9));
     console.log(`shown per second (0-9): ${perSecond.join('')}`);
+    for (const line of await page.evaluate(() => __watch)) console.log(`watch ${line}`);
 
     // The screencast only sends a frame when the page changes, so each frame lasts until the next one.
     const list = shots.map((t, i) => `file '${frames}/${String(i + 1).padStart(5, '0')}.jpg'\nduration ${((shots[i + 1] ?? t + 0.1) - t).toFixed(4)}`);
