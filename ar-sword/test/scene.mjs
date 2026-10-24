@@ -146,6 +146,7 @@ try {
   check(await title() === texts[tapped.id].title, `tap on ${tapped.id} shows "${await title()}"`);
   await page.screenshot({ path: `${out}/card-tap-${tapped.id}.png` });
   await page.click('#card .close');
+  await page.waitForSelector('#card', { state: 'hidden', timeout: 1000 }).catch(() => {});
   check(await page.isHidden('#card'), 'close button hides the card');
 
   const grabbed = pickFor(['head', 'map']);

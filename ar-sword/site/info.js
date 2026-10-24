@@ -22,7 +22,7 @@ const words = (v) => (typeof v === 'string' ? v : v?.title ?? '');
 export function infoFor(e) {
   const t = texts[e.id] ?? {};
   const fallback = e.kind === 'head' ? e.author.name : e.id;
-  const card = { title: t.title ?? fallback, text: t.text ?? '', facts: [], note: '' };
+  const card = { title: t.title ?? fallback, text: t.text ?? '', facts: [], note: '', pair: e.partner ? words(texts[e.partner]) : '' };
   if (e.kind === 'head') {
     const werk = words(t.werk) || words(texts[`${e.id}-werk`]);
     const ort = words(t.ort) || words(texts[`${e.id}-ort`]);

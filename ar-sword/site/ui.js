@@ -20,6 +20,10 @@ export function toScreen(u, v) {
   const c = cover();
   return [c.x + u * c.w, c.y + v * c.h];
 }
+export function onScreen(uv, margin = 16) {
+  const [x, y] = toScreen(uv[0], uv[1]);
+  return x > margin && x < innerWidth - margin && y > margin && y < innerHeight - margin;
+}
 export function toVideo(px, py) {
   const c = cover();
   return [(px - c.x) / c.w, (py - c.y) / c.h];
@@ -45,16 +49,23 @@ export function initLabels(labels, onPick) {
   });
 }
 
-// uvs[i] is [u, v] or null when that label is behind the camera.
-export function placeLabels(uvs, shown) {
+// Labels are set in fixed CSS widths and scaled to the width their plate has on screen, so a name plate hangs
+// inside its medallion at any distance and can never overlap the next one.
+const NATURAL = { name: 76, zone: 150 };
+const SCALE = { name: [0.3, 1.5], zone: [0.45, 1.8] };
+// items[i] is { uv: [u, v] or null when behind the camera, size: width in video heights, show: 0..1 }.
+export function placeLabels(items, shown) {
   labelLayer.hidden = !shown;
   if (!shown) return;
-  uvs.forEach((uv, i) => {
-    const el = labelEls[i];
-    el.hidden = !uv;
-    if (!uv) return;
+  const h = cover().h;
+  items.forEach(({ uv, size, show }, i) => {
+    const el = labelEls[i], kind = el.classList.contains('name') ? 'name' : 'zone';
+    el.hidden = !uv || show <= 0.01;
+    if (el.hidden) return;
     const [x, y] = toScreen(uv[0], uv[1]);
-    el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
+    const k = Math.min(Math.max((size * h) / NATURAL[kind], SCALE[kind][0]), SCALE[kind][1]);
+    el.style.opacity = show.toFixed(2);
+    el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%) scale(${k.toFixed(3)})`;
   });
 }
 
@@ -89,7 +100,7 @@ export function setCursor(uv, closed, over) {
   cursorEl.classList.toggle('over', over);
 }
 
-export function showCard({ title, text, facts, note }) {
+export function showCard({ title, text, facts, note, pair }) {
   cardEl.querySelector('h2').textContent = title;
   cardEl.querySelector('.text').textContent = text;
   const dl = cardEl.querySelector('dl');
@@ -102,28 +113,36 @@ export function showCard({ title, text, facts, note }) {
   const noteEl = cardEl.querySelector('.note');
   noteEl.textContent = note;
   noteEl.hidden = !note;
-  cardEl.hidden = false;
+  const pairEl = cardEl.querySelector('.pair');
+  pairEl.textContent = pair ? `Gegenstück: ${pair}` : '';
+  pairEl.hidden = !pair;
+  cardEl.classList.remove('more');
+  cardEl.classList.add('open');
   cardEl.scrollTop = 0;
+  // The card grows out of its object and settles with a little overshoot.
+  cardEl.animate(
+    [{ opacity: 0, scale: 0.88, translate: '0 10px' }, { opacity: 1, scale: 1, translate: '0 0' }],
+    { duration: 320, easing: 'cubic-bezier(0.2, 1.35, 0.4, 1)' },
+  );
 }
-export function hideCard() { cardEl.hidden = true; }
+export function hideCard() { cardEl.classList.remove('open'); }
+cardEl.querySelector('.text').addEventListener('click', () => cardEl.classList.toggle('more'));
 export const onCardClose = (fn) => cardEl.querySelector('.close').addEventListener('click', fn);
 
-const MARGIN = 12, GAP = 12;
-// Beside the object on the side with more room, clamped to the screen and kept above the status pill.
-// radius is the object's half size in video heights.
-export function placeCard(uv, radius) {
-  if (cardEl.hidden) return;
-  const c = cover(), { W, H } = c;
+const MARGIN = 12;
+let cardSide = 'left';
+// The card docks in a bottom corner on the side away from its object, so it never hides the object, the poets or the
+// threads between them. It grows out of the object's direction. Hysteresis keeps it from flipping while the object
+// sits near the middle.
+export function placeCard(uv) {
+  if (!cardEl.classList.contains('open')) return;
+  const { W, H } = cover();
   const [x, y] = toScreen(uv[0], uv[1]);
-  const r = radius * c.h + GAP;
-  // The card narrows to the free side of the object, down to a readable 220 px, before it is allowed to cover it.
-  const room = (x > W / 2 ? x - r : W - x - r) - MARGIN;
-  const width = Math.round(Math.max(220, Math.min(300, room)));
-  if (Math.abs(cardEl.offsetWidth - width) > 2) cardEl.style.width = `${width}px`;
+  if (x > W * 0.62) cardSide = 'left';
+  else if (x < W * 0.38) cardSide = 'right';
   const cw = cardEl.offsetWidth, ch = cardEl.offsetHeight;
-  const left = x > W / 2 ? x - r - cw : x + r;
-  const top = y - ch / 2;
-  const cx = Math.min(Math.max(left, MARGIN), W - cw - MARGIN);
-  const cy = Math.min(Math.max(top, 64), H - ch - 84);
-  cardEl.style.transform = `translate(${cx.toFixed(0)}px, ${Math.max(cy, MARGIN).toFixed(0)}px)`;
+  const cx = cardSide === 'left' ? MARGIN : W - cw - MARGIN;
+  const cy = H - ch - 84;
+  cardEl.style.transformOrigin = `${(x - cx).toFixed(0)}px ${(y - cy).toFixed(0)}px`;
+  cardEl.style.transform = `translate(${cx.toFixed(0)}px, ${cy.toFixed(0)}px)`;
 }

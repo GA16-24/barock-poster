@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { toGray, detectScreen } from './detect.js';
 import { createWallTracker } from './track.js';
-import { stage, entries, labels, initStage, loadScene, updateScene, pick, select, setHover, selectedEntry } from './scene.js';
+import { stage, entries, labels, initStage, loadScene, updateScene, pick, select, setHover, setGaze, selectedEntry } from './scene.js';
 import { loadInfo, infoFor } from './info.js';
 import * as ui from './ui.js';
 
@@ -18,7 +18,10 @@ const SNAP_DISTANCE = 0.3;
 // hit from long ago cannot lower the bar for a look-alike (the card reader) somewhere else.
 const HOLD_MS = { gyro: 30000, none: 100 };
 const TRACK_MS = 500;
-const APPEAR_MS = 600;
+// A scene found again within REPLAY_MS of losing it is simply back; only a fresh find plays the entrance.
+const REPLAY_MS = 5000;
+// A card goes away when its object has been off screen, or the scene lost, for this long.
+const CARD_GRACE_MS = 300;
 
 const $ = (id) => document.getElementById(id);
 const video = $('video');
@@ -108,7 +111,7 @@ const wall = createWallTracker();
 let lastHit = null;
 let lastSeen = -Infinity;
 let lastVideoTime = -1;
-let appearStart = null;
+let appearStart = null, goneAt = -Infinity, strayedAt = null;
 
 function resize(vw, vh) {
   videoW = vw;
@@ -173,9 +176,6 @@ function detect(now) {
   return true;
 }
 
-const easeOutCubic = (t) => 1 - (1 - t) ** 3;
-const clamp01 = (x) => Math.min(1, Math.max(0, x));
-
 // Taps and hand grabs share one path: a point in normalized video coordinates. The 3D camera spans exactly the
 // video frame, so that point is also the ray's position in normalized device coordinates.
 const raycaster = new THREE.Raycaster();
@@ -187,6 +187,7 @@ function entryAt(uv) {
 }
 
 function trigger(e) {
+  strayedAt = null;
   select(e);
   if (e) ui.showCard(infoFor(e));
   else ui.hideCard();
@@ -197,6 +198,10 @@ const v3 = new THREE.Vector3();
 function uvOf(object) {
   v3.setFromMatrixPosition(object.matrixWorld).project(camera);
   return v3.z < 1 ? [(v3.x + 1) / 2, (1 - v3.y) / 2] : null;
+}
+// How long `meters` on the wall look at that point, in video heights.
+function sizeOnScreen(matrixWorld, meters) {
+  return (meters * focal) / Math.max(v3.setFromMatrixPosition(matrixWorld).length(), 0.1) / frameH;
 }
 
 let hands = null;
@@ -216,16 +221,18 @@ function frame(now) {
   lastFrame = now;
 
   const seen = now - lastSeen < hold();
-  appearStart = seen ? appearStart ?? now : null;
+  if (!seen && appearStart !== null) goneAt = now;
+  if (seen && appearStart === null) appearStart = now - (now - goneAt < REPLAY_MS ? 1e9 : 0);
+  if (!seen) appearStart = null;
   stage.visible = seen;
-  stage.scale.setScalar(seen ? Math.max(easeOutCubic(clamp01((now - appearStart) / APPEAR_MS)), 0.001) : 1);
-  updateScene(now / 1000, dt);
+  updateScene(now / 1000, dt, seen ? (now - appearStart) / 1000 : 0);
   scene.updateMatrixWorld();
 
   const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;
   if (fakeHand?.grab) fakeHand = { ...fakeHand, grab: false };
   const handUv = hand && [hand.x, hand.y];
   const over = handUv ? entryAt(handUv) : null;
+  setGaze(handUv ? raycaster.ray : null);
   setHover(over);
   if (hand?.grab && over) trigger(over);
   ui.setCursor(handUv, !!hand?.closed, !!over);
@@ -236,12 +243,13 @@ function frame(now) {
   }
   renderer.render(scene, camera);
 
-  ui.placeLabels(labels.map((l) => uvOf(l.marker)), seen);
+  ui.placeLabels(labels.map((l) => ({ uv: uvOf(l.marker), size: sizeOnScreen(l.marker.matrixWorld, l.width), show: l.show })), seen);
   const sel = selectedEntry();
   if (sel) {
-    // The card keeps clear of the object: its screen radius is half its size over its distance, in video heights.
-    const depth = Math.max(v3.setFromMatrixPosition(sel.holder.matrixWorld).length(), 0.1);
-    ui.placeCard(uvOf(sel.holder) ?? [0.5, 0.5], (sel.size * sel.holder.scale.x * stage.scale.x * focal) / 2 / depth / frameH);
+    const uv = uvOf(sel.holder);
+    strayedAt = seen && uv && ui.onScreen(uv) ? null : strayedAt ?? now;
+    if (strayedAt !== null && now - strayedAt > CARD_GRACE_MS) trigger(null);
+    else ui.placeCard(uv ?? [0.5, 0.5]);
   }
   ui.setStatus(seen);
   frameStats.n++;
