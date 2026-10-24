@@ -14,15 +14,20 @@ export const ZONES = {
   autoren: { title: 'Drei Dichter', x: 0, style: 'autoren' },
   volk: { title: 'Das Volk', x: (COLS[0] + COLS[1]) / 2, style: 'volk' },
 };
-// One line of titles above everything.
-export const TITLE_Y = 0.795;
+// One gilt cornice runs over both grids and the poets and carries the zone titles; the poets' title sits on the
+// cartouche in its middle. `y` is the bottom of its frieze.
+export const CORNICE = { halfWidth: COLS[1] + NICHE.w / 2 + 0.02, y: ROWS[0] + NICHE.h / 2 + 0.015, frieze: 0.075 };
+export const TITLE_Y = CORNICE.y + CORNICE.frieze / 2;
+// A tall gilt portal holds the book niche at its foot and frames the thermostat in its arch. It stays narrow enough
+// to clear the thermostat housing inside and the light switch beside it.
+export const ARCH = { halfWidth: 0.095, band: 0.014, base: -0.395, spring: 0.02 };
 
-// Gilt frames on crimson for the nobility, plain dark wood on grey linen for the common people, gilt on deep blue for the poets.
-// `back` runs from the dark edge to the lit center of the niche.
+// Black lacquer with a gilt lip on red velvet for the nobility, raw pine on linen for the common people, gilt on
+// deep blue for the poets. `back` runs from the dark edge to the lit center of the niche.
 export const FRAME_STYLES = {
-  adel: { frame: 0xd8aa4a, metal: 0.9, rough: 0.3, back: ['#3c0f1a', '#7d2a3a'], weave: 'damask', ridge: true },
-  volk: { frame: 0x3b2514, metal: 0.05, rough: 0.55, back: ['#2a2c25', '#6b6d5d'], weave: 'linen', ridge: false },
-  autoren: { frame: 0xd8aa4a, metal: 0.9, rough: 0.3, back: ['#0b1f2a', '#245466'], weave: 'damask', ridge: true },
+  adel: { frame: 'lacquer', lip: true, back: 'velvet', side: 0x2a0a10, drape: 'velvet' },
+  volk: { frame: 'pine', lip: false, back: 'linen', side: 0x6b4a2a, drape: 'linen' },
+  autoren: { frame: 'gilt', lip: true, back: 'damask', side: 0x081820 },
 };
 
 // Antithesis, the signature device of Baroque writing, as the layout rule: both sides have eight things and each has a
@@ -76,7 +81,7 @@ export const HEAD_SIZE = 0.2;
 export const MEDALLION = { w: 0.27, h: 0.36, depth: 0.13, plate: 0.24, plateDrop: 0.175 };
 // The author map is a flat display table 1 m across; the book lies in its own niche below the thermostat.
 export const MAP = { size: 1.0, at: [0, -0.7, 0.62] };
-export const BOOK = { size: 0.19, at: [0, -0.25, 0.07], niche: { w: 0.25, h: 0.3, depth: 0.12 } };
+export const BOOK = { size: 0.16, at: [0, -0.255, 0.07], niche: { w: 0.16, h: 0.25, depth: 0.12 } };
 
 export const ALL_IDS = [
   ...ITEMS.map((i) => i.id),

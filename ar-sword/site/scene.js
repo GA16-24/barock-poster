@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ZONES, TITLE_Y, COLS, NICHE, ITEMS, AUTHORS, HEAD_SIZE, MEDALLION, MAP, BOOK } from './catalog.js';
+import { ZONES, TITLE_Y, COLS, ROWS, NICHE, ITEMS, AUTHORS, HEAD_SIZE, MEDALLION, MAP, BOOK } from './catalog.js';
 import { buildBook } from './book.js';
-import { buildNiche, buildRule, buildTable, buildDust, createLink, spinPart } from './gallery.js';
+import { buildNiche, buildCornice, buildArch, buildConsole, buildDust, createLink, spinPart } from './gallery.js';
 
 // Everything anchored to the thermostat, in its frame (meters, z out of the wall).
 export const stage = new THREE.Group();
@@ -13,7 +13,8 @@ export const stage = new THREE.Group();
 // carries the idle motion; the loaded model inside is centered and scaled to fit. Maps and books belong to an author
 // and only show while he is active (`show` eases between 0 and 1). Items and heads hang in a niche.
 // { id, kind: 'item' | 'head' | 'book' | 'map', author, size, rest: Vector3, yaw, holder, inner, box: Box3 | null,
-//   mats: Material[], mixer, book, niche, role: null | 'partner' | 'related', show, hover, lift: Spring, lit, dim, spin, phase, t0 }
+//   mats: Material[], mixer, book, niche, drape, role: null | 'partner' | 'related', show, hover, lift: Spring, enter: Spring,
+//   lit, dim, spin, phase, t0 }. `drape` is when its niche's drapes start to part; the object steps out at `t0`.
 export const entries = [];
 
 // HTML labels follow these markers: { text, sub, kind: 'zone' | 'name', id, marker: Object3D, width, show, start }.
@@ -25,8 +26,7 @@ const LIFT = { item: 0.2, head: 0.1, book: 0.12, map: 0 };
 const GROW = { item: 0.4, head: 0.22, book: 0.3, map: 0.04 };
 const ROLE_LIFT = { partner: 0.4, related: 1 };
 const BOOK_YAW = 0.3;
-const ENTER = { frame: 0.6, pop: 0.5 };
-const TOP_ARCH = [0, 0.68, 0.42];
+const ENTER = { grow: 0.45, drape: 0.5 };
 
 let active = AUTHORS[0].id;
 let selected = null;
@@ -36,7 +36,6 @@ let gaze = null;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const ramp = (age, start, dur) => clamp01((age - start) / dur);
 const smooth = (x) => x * x * (3 - 2 * x);
-// Overshoots by about 10% and settles, so things arrive with a little weight.
 const backOut = (x) => 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2;
 const ease = (cur, goal, dt, rate) => cur + (goal - cur) * (1 - Math.exp(-dt * rate));
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -56,7 +55,7 @@ function addEntry({ id, kind, author = null, size, at, yaw = 0, ...rest }) {
   stage.add(holder);
   const e = {
     id, kind, author, size, rest: holder.position.clone(), yaw, holder, inner: null, box: null, mats: [], mixer: null, book: null,
-    niche: null, tint: [], role: null, show: kind === 'map' || kind === 'book' ? 0 : 1, hover: 0, lift: { x: 0, v: 0 }, lit: 0, dim: 0, lum: 0,
+    niche: null, drape: 0, tint: [], role: null, show: kind === 'map' || kind === 'book' ? 0 : 1, hover: 0, lift: { x: 0, v: 0 }, enter: { x: 0, v: 0 }, lit: 0, dim: 0, lum: 0,
     spin: 0, phase: Math.random() * 6.28, t0: 0, ...rest,
   };
   if (kind === 'head') Object.assign(e, { yawS: { x: 0, v: 0 }, pitchS: { x: 0, v: 0 }, glanceUntil: 0, glanceAt: null });
@@ -64,13 +63,13 @@ function addEntry({ id, kind, author = null, size, at, yaw = 0, ...rest }) {
   return e;
 }
 
-// The frame traces itself from `start`; what hangs in it appears just before the frame closes.
+// The case comes out of the wall from `start`; what hangs in it steps out as it arrives.
 function hang(entry, niche, start) {
   niche.start = start;
   niche.group.position.set(entry.rest.x, entry.rest.y, 0);
   stage.add(niche.group);
   entry.niche = niche;
-  entry.t0 = start + ENTER.frame * 0.85;
+  entry.t0 = start + ENTER.grow * 0.8;
 }
 
 function addLabel(text, sub, kind, at, width, start, id = null) {
@@ -148,39 +147,37 @@ async function loadModel(e, url) {
   }
 }
 
-const rules = [];
 const offCenter = (x) => (Math.abs(x) < 0.01 ? 0 : 1);
 
+// The cases open as a wave from the thermostat outward, both cases of a pair at once.
 for (const item of ITEMS) {
   const [col, row] = item.slot;
+  const far = Math.hypot(COLS[col], ROWS[row]) - Math.hypot(COLS[0], ROWS[1]);
   const e = addEntry({ ...item, kind: 'item', size: NICHE.fit[0] });
-  hang(e, buildNiche({ shape: 'rect', ...NICHE, style: ZONES[item.zone].style }), 0.1 + col * 0.22 + row * 0.04);
+  hang(e, buildNiche({ shape: 'rect', ...NICHE, style: ZONES[item.zone].style }), 0.15 + far * 0.5);
+  e.drape = 0.8 + far * 1.6;
+  e.t0 = e.drape + 0.15;
 }
 // The three books share one niche; only the active author's book hangs in it.
 const bookNiche = buildNiche({ shape: 'rect', ...BOOK.niche, style: ZONES.autoren.style });
 for (const a of AUTHORS) {
   const e = addEntry({ id: a.id, kind: 'head', author: a, size: HEAD_SIZE, at: a.at });
-  hang(e, buildNiche({ shape: 'oval', w: MEDALLION.w, h: MEDALLION.h, depth: MEDALLION.depth, style: ZONES.autoren.style }), offCenter(a.at[0]) * 0.08);
+  hang(e, buildNiche({ shape: 'oval', w: MEDALLION.w, h: MEDALLION.h, depth: MEDALLION.depth, style: ZONES.autoren.style }), 0.2 + offCenter(a.at[0]) * 0.1);
   addEntry({ id: `${a.id}-ort`, kind: 'map', author: a, size: MAP.size, at: MAP.at }).t0 = 1.35;
   const b = addEntry({ id: `${a.id}-werk`, kind: 'book', author: a, size: BOOK.size, at: BOOK.at, yaw: BOOK_YAW });
   b.book = buildBook({ size: BOOK.size, cover: a.cover, title: a.name });
   hang(b, bookNiche, 0.2);
-  addLabel(a.name.split(' ').at(-1), a.reconstruction ? `${a.life}\nRekonstruktion` : a.life, 'name', [a.at[0], a.at[1] - MEDALLION.plateDrop, MEDALLION.depth + 0.012], MEDALLION.plate, 0.55 + offCenter(a.at[0]) * 0.1, a.id);
+  addLabel(a.name.split(' ').at(-1), a.reconstruction ? `${a.life}\nRekonstruktion` : a.life, 'name', [a.at[0], a.at[1] - MEDALLION.plateDrop, MEDALLION.depth + 0.012], MEDALLION.plate, 0.75 + offCenter(a.at[0]) * 0.1, a.id);
 }
 
-const zoneEdge = COLS[1] + NICHE.w / 2, innerEdge = COLS[0] - NICHE.w / 2;
-for (const [name, z] of Object.entries(ZONES)) {
-  const span = name === 'autoren' ? 2 * (AUTHORS[2].at[0] + MEDALLION.w / 2) : zoneEdge - innerEdge;
-  const start = name === 'autoren' ? 0.05 : 0.15;
-  const rule = buildRule(span, name === 'autoren' ? 0.36 : 0.3, TITLE_Y);
-  rule.group.position.x = z.x;
-  rule.start = start;
-  stage.add(rule.group);
-  rules.push(rule);
-  addLabel(z.title, '', 'zone', [z.x, TITLE_Y + 0.004, 0.012], 0.3, start + 0.35);
-}
-const table = buildTable();
-stage.add(table.group);
+for (const [name, z] of Object.entries(ZONES)) addLabel(z.title, '', 'zone', [z.x, TITLE_Y, name === 'autoren' ? 0.1 : 0.055], 0.4, name === 'autoren' ? 0.25 : 0.4);
+const cornice = buildCornice(), arch = buildArch(), table = buildConsole();
+stage.add(cornice.group, arch.group, table.group);
+const structure = (age) => {
+  cornice.set(smooth(ramp(age, 0.05, 0.5)), backOut(ramp(age, 0, 0.4)));
+  arch.set(smooth(ramp(age, 0.1, 0.6)));
+  table.set(smooth(ramp(age, 0.5, 0.7)));
+};
 const dust = buildDust();
 stage.add(dust.points);
 const links = [createLink(), createLink()];
@@ -238,11 +235,11 @@ export function initStage(r, scene) {
   stage.visible = true;
   const niches = entries.filter((e) => e.niche);
   for (const e of niches) e.niche.set(1, 0, 1);
-  table.set(1);
+  structure(Infinity);
   for (const l of links) l.group.visible = true;
   renderer.compileAsync(stage, compileCamera, world).finally(() => {
     for (const e of niches) e.niche.set(0, 0, 0);
-    table.set(0);
+    structure(0);
     for (const l of links) l.group.visible = false;
   });
   stage.visible = shown;
@@ -337,7 +334,7 @@ const IDLE = {
   sway: (e, t, a) => pivot(e, e.box.max.y, a * (Math.sin(t * 1.1 + e.phase) + 0.3 * Math.sin(t * 2.3 + e.phase))),
   rock: (e, t, a) => pivot(e, e.box.min.y, a * Math.sin(t * 2 + e.phase)),
   tilt: (e, t, a) => { e.inner.rotation.z = a * Math.sin(t * 0.8 + e.phase); },
-  turn: (e, t, a) => { e.inner.rotation.y = a * Math.sin(t * 0.6 + e.phase); },
+  turn: (e, t, a) => { e.inner.rotation.y = a * Math.sin(t * 0.9 + e.phase); },
   breath: (e, t, a) => {
     const s = 1 + a * Math.sin(t * 1.4 + e.phase);
     e.inner.scale.y = s;
@@ -347,8 +344,7 @@ const IDLE = {
 
 export function updateScene(t, dt, age = Infinity) {
   dust.update(t);
-  table.set(smooth(ramp(age, 0.5, 0.7)));
-  rules.forEach((r) => r.set(smooth(ramp(age, r.start, 0.6))));
+  structure(age);
   for (const l of labels) l.show = ramp(age, l.start, 0.4);
   for (const l of links) l.update(t, dt);
 
@@ -364,19 +360,22 @@ export function updateScene(t, dt, age = Infinity) {
     const dimGoal = !unrelated ? 0 : e.kind === 'item' ? (selected.kind === 'item' ? 1 : 0.7) : e.kind !== 'head' && selected.kind === 'item' ? 0.8 : 0;
     e.dim = ease(e.dim, dimGoal, dt, 5);
     e.spin = e === selected && e.kind === 'item' ? e.spin + dt * 0.5 : ease(wrap(e.spin), 0, dt, 3);
-    if (e.niche && (e.kind !== 'book' || e.author.id === active)) e.niche.set(smooth(ramp(age, e.niche.start, ENTER.frame)), e.lit, e.dim);
+    if (e.niche && (e.kind !== 'book' || e.author.id === active)) e.niche.set(smooth(ramp(age, e.niche.start, ENTER.grow)), e.lit, e.dim, smooth(ramp(age, e.drape, ENTER.drape)));
     if (e.kind === 'head') aim(e, selected ? (selected !== e ? lookAt : null) : glance(e, t), dt);
 
     const h = e.holder;
-    const u = ramp(age, e.t0, ENTER.pop);
-    h.visible = e.show > 0.01 && !!e.box && u > 0;
+    // Out of its niche (or up from the console) on a spring; restarts when the entrance replays.
+    const out = age >= e.t0;
+    if (out) spring(e.enter, 1, dt, 11, 0.45);
+    else e.enter.x = e.enter.v = 0;
+    h.visible = e.show > 0.01 && !!e.box && out;
     if (!h.visible) continue;
-    const l = e.lift.x;
+    const l = e.lift.x, u = e.enter.x;
     h.position.copy(e.rest);
-    h.position.z += (u - 1) * 0.05 + l * LIFT[e.kind] - e.dim * 0.015;
+    h.position.z += (e.kind === 'map' ? 0 : (u - 1) * 0.1) + l * LIFT[e.kind] - e.dim * 0.015;
     if (e.kind === 'map') h.position.y += -(1 - e.show) * 0.4 + 0.07 * l;
     if (e.kind === 'book') h.position.y += Math.sin(t * 0.9 + e.phase) * 0.004 * l;
-    h.scale.setScalar(Math.max(e.show * backOut(u), 0.001) * (1 + 0.05 * e.hover + GROW[e.kind] * l) * (1 - 0.04 * e.dim));
+    h.scale.setScalar(Math.max(e.show * (e.kind === 'map' ? u : 0.85 + 0.15 * u), 0.001) * (1 + 0.05 * e.hover + GROW[e.kind] * l) * (1 - 0.04 * e.dim));
     h.rotation.set(e.kind === 'head' ? e.pitchS.x : 0, e.yaw + (e.kind === 'head' ? e.yawS.x : 0) + e.spin, 0);
     if (e.idle) {
       e.inner.rotation.set(0, 0, 0);

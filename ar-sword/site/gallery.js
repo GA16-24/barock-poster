@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FRAME_STYLES, MAP } from './catalog.js';
+import { FRAME_STYLES, MAP, CORNICE, ARCH } from './catalog.js';
 import { canvasTexture } from './book.js';
 
-// What holds the props: shadow-box niches, the title rules, the map table, dust and the gold links between things.
-// Everything here is procedural, so the room has no extra assets to load.
+// What holds the props: shadow-box niches with their drapes, the cornice, the arch around the thermostat, the map
+// console, dust and the gold links between things. Everything here is procedural, so the room has no extra assets to load.
 const WARM = new THREE.Color(1, 0.78, 0.4);
-const BORDER = 0.026;
+const BORDER = 0.022;
 const GILT = { color: 0xd8aa4a, metalness: 0.9, roughness: 0.3 };
 
 function outline(shape, w, h) {
@@ -24,71 +24,141 @@ function ring(shape, w, h, border, z0, thick, bevel) {
   return g.translate(0, 0, z0 + bevel);
 }
 
+// The frame is the outer moulding (group 0) and, if `lip`, a gilt inner lip (group 1).
 const frameGeos = new Map();
-function frameGeometry(shape, w, h, depth, ridge) {
-  const key = [shape, w, h, depth, ridge].join();
+function frameGeometry(shape, w, h, depth, lip) {
+  const key = [shape, w, h, depth, lip].join();
   if (!frameGeos.has(key)) {
     const layers = [ring(shape, w, h, BORDER, depth - 0.032, 0.032, 0.005)];
-    if (ridge) layers.push(ring(shape, w - 0.008, h - 0.008, 0.011 + 0.004, depth - 0.016, 0.03, 0.004));
-    frameGeos.set(key, mergeGeometries(layers));
+    if (lip) layers.push(ring(shape, w - 2 * BORDER + 0.014, h - 2 * BORDER + 0.014, 0.011, depth - 0.02, 0.026, 0.003));
+    frameGeos.set(key, mergeGeometries(layers, true));
   }
   return frameGeos.get(key);
 }
 
-const backTextures = {};
-function backTexture(style) {
-  const s = FRAME_STYLES[style];
-  return backTextures[style] ??= canvasTexture(256, 256, (ctx, w, h) => {
-    const g = ctx.createRadialGradient(w / 2, h * 0.42, 6, w / 2, h / 2, w * 0.78);
-    g.addColorStop(0, s.back[1]);
-    g.addColorStop(1, s.back[0]);
+// A fixed seed, so every load draws the same grain.
+let seed = 7;
+const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+function grain(ctx, w, h, base, dark, light, n) {
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < n; i++) {
+    ctx.strokeStyle = rnd() < 0.5 ? dark : light;
+    ctx.globalAlpha = 0.08 + rnd() * 0.2;
+    ctx.lineWidth = 0.5 + rnd() * 2.5;
+    const y = rnd() * h, a = rnd() * 6.3, k = 2 + rnd() * 6;
+    ctx.beginPath();
+    for (let x = 0; x <= w; x += 8) ctx.lineTo(x, y + Math.sin((x / w) * k + a) * 6 + Math.sin(x / 17 + a) * 1.5);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+// Shadow baked into the edges of a lining, so things read as sitting inside the box.
+function edges(ctx, w, h, k = 0.7) {
+  for (const [x0, y0, x1, y1] of [[0, 0, 0, h * 0.5], [0, h, 0, h * 0.75], [0, 0, w * 0.3, 0], [w, 0, w * 0.7, 0]]) {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, `rgba(0,0,0,${k})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
-    if (s.weave === 'damask') {
-      ctx.strokeStyle = 'rgba(236,210,140,0.16)';
-      ctx.fillStyle = 'rgba(236,210,140,0.22)';
-      for (let y = 0; y < h; y += 32) for (let x = 0; x < w; x += 32) {
-        ctx.beginPath();
-        ctx.moveTo(x + 16, y);
-        ctx.lineTo(x + 32, y + 16);
-        ctx.lineTo(x + 16, y + 32);
-        ctx.lineTo(x, y + 16);
-        ctx.closePath();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(x + 16, y + 16, 2.2, 0, 7);
-        ctx.fill();
-      }
-    } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.035)';
-      for (let i = 0; i < w; i += 3) {
-        ctx.fillRect(i, 0, 1, h);
-        ctx.fillRect(0, i, w, 1);
-      }
-    }
-  });
+  }
+}
+function speckle(ctx, w, h, n, a, b) {
+  for (let i = 0; i < n; i++) {
+    ctx.fillStyle = `rgba(${rnd() < 0.5 ? a : b},${0.05 + rnd() * 0.12})`;
+    ctx.fillRect(rnd() * w, rnd() * h, 1 + rnd() * 3, 1 + rnd() * 2);
+  }
+}
+function weave(ctx, w, h, a) {
+  ctx.fillStyle = `rgba(255,255,255,${a})`;
+  for (let i = 0; i < w; i += 3) ctx.fillRect(i, 0, 1, h);
+  ctx.fillStyle = `rgba(0,0,0,${a})`;
+  for (let i = 0; i < h; i += 3) ctx.fillRect(0, i, w, 1);
+}
+function damask(ctx, w, h) {
+  const g = ctx.createRadialGradient(w / 2, h * 0.42, 6, w / 2, h / 2, w * 0.78);
+  g.addColorStop(0, '#245466');
+  g.addColorStop(1, '#0b1f2a');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(236,210,140,0.16)';
+  ctx.fillStyle = 'rgba(236,210,140,0.22)';
+  for (let y = 0; y < h; y += 32) for (let x = 0; x < w; x += 32) {
+    ctx.beginPath();
+    ctx.moveTo(x + 16, y);
+    ctx.lineTo(x + 32, y + 16);
+    ctx.lineTo(x + 16, y + 32);
+    ctx.lineTo(x, y + 16);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x + 16, y + 16, 2.2, 0, 7);
+    ctx.fill();
+  }
 }
 
-// The frame traces itself: a clockwise wipe from the top around the frame center, with a bright head at the leading
-// edge. Shadows come from a depth material that ignores the wipe, so a frame only casts one once it is complete.
-function wipe(mat) {
-  const draw = { value: 0 };
-  mat.userData.draw = draw;
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uDraw = draw;
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vFp;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFp = position.xy;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vFp;\nuniform float uDraw;')
-      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        float sw = fract(atan(vFp.x, vFp.y) / 6.2831853);
-        if (sw > uDraw) discard;
-        totalEmissiveRadiance += vec3(1.0, 0.82, 0.45) * smoothstep(uDraw - 0.07, uDraw, sw) * step(uDraw, 0.999) * 3.0;`);
-  };
-  mat.customProgramCacheKey = () => 'wipe';
-  return mat;
+const DRAW = {
+  velvet(ctx, w, h) {
+    const g = ctx.createRadialGradient(w / 2, h * 0.42, 6, w / 2, h / 2, w * 0.75);
+    g.addColorStop(0, '#9a2234');
+    g.addColorStop(1, '#4a0c18');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    speckle(ctx, w, h, 1800, '30,6,10', '170,50,70');
+    edges(ctx, w, h);
+  },
+  linen(ctx, w, h) {
+    const g = ctx.createRadialGradient(w / 2, h * 0.42, 6, w / 2, h / 2, w * 0.75);
+    g.addColorStop(0, '#d8ccad');
+    g.addColorStop(1, '#8e8366');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    weave(ctx, w, h, 0.06);
+    edges(ctx, w, h, 0.55);
+  },
+  damask,
+  lacquer: (ctx, w, h) => grain(ctx, w, h, '#16100d', '#050303', '#3a2a1e', 60),
+  // Raw pine: pale grain with the dark seams of boards nailed side by side.
+  pine(ctx, w, h) {
+    grain(ctx, w, h, '#a8763f', '#5e3b1c', '#c99a62', 160);
+    ctx.fillStyle = 'rgba(50,28,10,0.7)';
+    for (let y = 0; y < h; y += h / 4) ctx.fillRect(0, y, w, 3);
+    speckle(ctx, w, h, 60, '60,36,14', '60,36,14');
+  },
+  // Drapes: vertical folds as light and dark bands, so squeezing the drape to its side packs the folds tighter.
+  velvetDrape(ctx, w, h) {
+    for (let x = 0; x < w; x++) {
+      const f = 0.5 + 0.5 * Math.sin((x / w) * Math.PI * 12);
+      ctx.fillStyle = `rgb(${70 + f * 80},${10 + f * 16},${22 + f * 22})`;
+      ctx.fillRect(x, 0, 1, h);
+    }
+    ctx.fillStyle = '#d8aa4a';
+    ctx.fillRect(0, h * 0.93, w, h * 0.07);
+    ctx.fillStyle = 'rgba(80,50,10,0.6)';
+    for (let x = 0; x < w; x += 4) ctx.fillRect(x, h * 0.95, 1, h * 0.05);
+  },
+  linenDrape(ctx, w, h) {
+    for (let x = 0; x < w; x++) {
+      const f = 0.5 + 0.5 * Math.sin((x / w) * Math.PI * 10);
+      ctx.fillStyle = `rgb(${160 + f * 62},${150 + f * 58},${122 + f * 50})`;
+      ctx.fillRect(x, 0, 1, h);
+    }
+    weave(ctx, w, h, 0.05);
+    ctx.fillStyle = 'rgba(90,70,40,0.5)';
+    ctx.fillRect(0, h * 0.94, w, 2);
+  },
+};
+const textures = {};
+function texture(name, repeat = 1) {
+  return textures[name + repeat] ??= Object.assign(canvasTexture(256, 256, DRAW[name]), { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, repeat: new THREE.Vector2(repeat, repeat) });
 }
+
+// The frame UVs are positions in meters, so the grain repeats every third of a meter.
+const FRAME_MAT = {
+  lacquer: () => new THREE.MeshStandardMaterial({ map: texture('lacquer', 3), roughness: 0.22, metalness: 0.1 }),
+  pine: () => new THREE.MeshStandardMaterial({ map: texture('pine', 3), roughness: 0.85 }),
+  gilt: () => new THREE.MeshStandardMaterial(GILT),
+};
 
 // Turns the part of a single-mesh model that lies in a disc (the spinning wheel) about the wall normal. The disc is
 // given in the model's own coordinates: `center` [x, y], `radius`, and the `z` range the wheel occupies, so the
@@ -114,19 +184,20 @@ export function spinPart(mat, { center, radius, z }) {
 }
 
 // A niche is a shallow shadow box: moulded frame, lined sides, a patterned back and a dark veil in front that dims
-// whatever hangs behind it. Its back sits on the wall (z = 0) and it opens toward +z.
+// whatever hangs behind it. Its back sits on the wall (z = 0) and it opens toward +z. Cases of the two estates also
+// have a pair of drapes that part from the middle and gather at the sides of the opening.
 export function buildNiche({ shape, w, h, depth, style }) {
   const S = FRAME_STYLES[style];
   const group = new THREE.Group();
   const oval = shape === 'oval';
   const ow = w - 2 * BORDER + 0.004, oh = h - 2 * BORDER + 0.004;
 
-  const frameMat = wipe(new THREE.MeshStandardMaterial({ color: S.frame, metalness: S.metal, roughness: S.rough }));
-  const frame = new THREE.Mesh(frameGeometry(shape, w, h, depth, S.ridge), frameMat);
+  const frameMats = [FRAME_MAT[S.frame](), new THREE.MeshStandardMaterial(GILT)];
+  const frame = new THREE.Mesh(frameGeometry(shape, w, h, depth, S.lip), frameMats);
   frame.receiveShadow = true;
 
-  const sideMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(S.back[0]).multiplyScalar(0.8), roughness: 1, side: THREE.BackSide });
-  const backMat = new THREE.MeshStandardMaterial({ map: backTexture(style), emissiveMap: backTexture(style), emissive: 0x000000, roughness: 0.95 });
+  const sideMat = new THREE.MeshStandardMaterial({ color: S.side, roughness: 1, side: THREE.BackSide });
+  const backMat = new THREE.MeshStandardMaterial({ map: texture(S.back), emissiveMap: texture(S.back), emissive: 0x000000, roughness: 0.95 });
   const sides = oval
     ? new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, depth, 48, 1, true).rotateX(Math.PI / 2).translate(0, 0, depth / 2), sideMat)
     : new THREE.Mesh(new THREE.BoxGeometry(1, 1, depth).translate(0, 0, depth / 2), sideMat);
@@ -137,6 +208,14 @@ export function buildNiche({ shape, w, h, depth, style }) {
   sides.receiveShadow = back.receiveShadow = true;
   const interior = new THREE.Group();
   interior.add(sides, back);
+
+  const drapes = S.drape ? [-1, 1].map((s) => {
+    const m = new THREE.Mesh(drapeGeometry, new THREE.MeshStandardMaterial({ map: texture(`${S.drape}Drape`), roughness: S.drape === 'velvet' ? 0.75 : 0.95, side: THREE.DoubleSide }));
+    m.position.set(s * ow / 2, 0, depth - 0.014);
+    m.receiveShadow = true;
+    interior.add(m);
+    return m;
+  }) : [];
 
   const veil = new THREE.Mesh(
     oval ? new THREE.CircleGeometry(0.5, 48) : new THREE.PlaneGeometry(1, 1),
@@ -150,73 +229,149 @@ export function buildNiche({ shape, w, h, depth, style }) {
 
   return {
     group, depth, w, h, frame, oval,
-    // draw: 0..1 the frame traces itself, then the lining unrolls. glow lights the niche, dim darkens it.
-    set(draw, glow, dim) {
-      frameMat.userData.draw.value = draw >= 1 ? 1.01 : draw;
-      interior.visible = draw > 0.8;
-      interior.scale.y = Math.max((draw - 0.8) / 0.2, 0.001);
-      frame.castShadow = draw >= 1;
+    // grow: 0..1 the closed case comes out of the wall. open: 0..1 the drapes part. glow lights the niche, dim darkens it.
+    set(grow, glow, dim, open = 1) {
+      group.visible = grow > 0.001;
+      group.scale.set(0.9 + 0.1 * grow, 0.9 + 0.1 * grow, Math.max(grow, 0.001));
+      frame.castShadow = grow >= 1;
+      for (const d of drapes) d.scale.set(-Math.sign(d.position.x) * (ow / 2) * (1 - 0.93 * open), oh, 1);
       backMat.emissive.copy(WARM).multiplyScalar(glow * 0.4);
-      frameMat.emissive.copy(WARM).multiplyScalar(glow * 0.22);
+      for (const m of frameMats) m.emissive.copy(WARM).multiplyScalar(glow * 0.22);
       veil.material.opacity = dim * 0.6;
       veil.visible = dim > 0.01;
     },
   };
 }
+// One drape half, its hinge at x = 0 and its free edge at x = 1, rippled in z so the folds catch the light.
+const drapeGeometry = (() => {
+  const g = new THREE.PlaneGeometry(1, 1, 24, 1).translate(0.5, 0, 0);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setZ(i, 0.006 * Math.sin(p.getX(i) * Math.PI * 6));
+  g.computeVertexNormals();
+  return g;
+})();
 
-// A double rule that grows outward from a title, as the gold line that carries each zone name.
-export function buildRule(span, gap, y) {
-  const group = new THREE.Group();
-  const mat = new THREE.MeshBasicMaterial({ color: 0xe6bf62, toneMapped: false });
-  const half = (span - gap) / 2;
-  const halves = [-1, 1].map((s) => {
-    const g = new THREE.Group();
-    const main = new THREE.Mesh(new THREE.PlaneGeometry(half, 0.004).translate(half / 2, 0, 0), mat);
-    const fine = new THREE.Mesh(new THREE.PlaneGeometry(half * 0.8, 0.0015).translate(half * 0.4, -0.009, 0), mat);
-    const tip = new THREE.Mesh(new THREE.PlaneGeometry(0.016, 0.016).rotateZ(Math.PI / 4).translate(half, 0, 0), mat);
-    g.add(main, fine, tip);
-    g.position.x = (gap / 2) * s;
-    g.scale.x = s;
-    return { g, tip };
+// The gilt cornice over everything: a lacquer frieze between a bead below and a moulded cap above, with the poets'
+// cartouche in the middle. It grows outward from the cartouche.
+function cartoucheTexture() {
+  return canvasTexture(1024, 384, (ctx, w, h) => {
+    const cx = w / 2, cy = h * 0.56;
+    const rim = ctx.createLinearGradient(0, 0, 0, h);
+    rim.addColorStop(0, '#fbe7a6');
+    rim.addColorStop(0.45, '#c99a3c');
+    rim.addColorStop(1, '#6e4c16');
+    ctx.fillStyle = rim;
+    ctx.strokeStyle = '#5a3c10';
+    ctx.lineWidth = 5;
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + s * 330, cy - 60);
+      ctx.bezierCurveTo(cx + s * 470, cy - 130, cx + s * 515, cy + 30, cx + s * 440, cy + 80);
+      ctx.bezierCurveTo(cx + s * 400, cy + 100, cx + s * 360, cy + 60, cx + s * 395, cy + 40);
+      ctx.bezierCurveTo(cx + s * 430, cy + 20, cx + s * 420, cy - 50, cx + s * 330, cy + 40);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    for (let i = 0; i <= 10; i++) {
+      const a = Math.PI + (i / 10) * Math.PI;
+      ctx.lineTo(cx + Math.cos(a) * 70, cy - 112 + Math.sin(a) * 62 * (i % 2 ? 0.7 : 1));
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 360, 118, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    const field = ctx.createRadialGradient(cx, cy - 20, 20, cx, cy, 340);
+    field.addColorStop(0, '#1f4a5c');
+    field.addColorStop(1, '#081820');
+    ctx.fillStyle = field;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 332, 94, 0, 0, Math.PI * 2);
+    ctx.fill();
   });
-  group.add(...halves.map((h) => h.g));
-  group.position.y = y;
+}
+export function buildCornice() {
+  const { halfWidth: hw, y, frieze } = CORNICE;
+  const group = new THREE.Group();
+  const gilt = new THREE.MeshStandardMaterial(GILT);
+  const lacquer = new THREE.MeshStandardMaterial({ map: texture('lacquer', 3), roughness: 0.25, metalness: 0.1 });
+  const band = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2 * hw, frieze, 0.05).translate(0, y + frieze / 2, 0.025), lacquer);
+  const bead = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 2 * hw, 10).rotateZ(Math.PI / 2).translate(0, y, 0.05), gilt);
+  const profile = new THREE.Shape().moveTo(0, 0).lineTo(0.056, 0).lineTo(0.06, 0.007)
+    .bezierCurveTo(0.062, 0.02, 0.085, 0.018, 0.088, 0.032).lineTo(0.088, 0.044).lineTo(0, 0.044).closePath();
+  const cap = new THREE.Mesh(new THREE.ExtrudeGeometry(profile, { depth: 2 * hw, bevelEnabled: false, curveSegments: 8 })
+    .rotateY(-Math.PI / 2).translate(hw, y + frieze, 0), gilt);
+  for (const m of [body, bead, cap]) m.castShadow = m.receiveShadow = true;
+  band.add(body, bead, cap);
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.195), new THREE.MeshStandardMaterial({ map: cartoucheTexture(), alphaTest: 0.5, metalness: 0.35, roughness: 0.45 }));
+  plate.position.set(0, y + frieze / 2 - 0.004, 0.095);
+  group.add(band, plate);
   return {
     group,
-    set(u) {
-      group.visible = u > 0.001;
-      for (const { g, tip } of halves) {
-        g.scale.x = Math.sign(g.scale.x) * Math.max(u, 0.001);
-        tip.visible = u > 0.98;
-      }
+    set(grow, pop) {
+      band.visible = grow > 0.001;
+      band.scale.x = Math.max(grow, 0.001);
+      plate.visible = pop > 0.001;
+      plate.scale.setScalar(Math.max(pop, 0.001));
     },
   };
 }
 
-// The display table for the map: a gilt ring under the disc and two scrolled brackets that hold it from the wall.
-export function buildTable() {
+// The gilt portal: a sill with a scroll at each foot, two jambs and a round head with keystone and finial. It rises
+// from its sill.
+export function buildArch() {
+  const { halfWidth: w, band, base, spring } = ARCH, i = w - band, top = spring - base;
+  const shape = new THREE.Shape().moveTo(-w, 0).lineTo(w, 0).lineTo(w, top).absarc(0, top, w, 0, Math.PI, false).closePath();
+  shape.holes.push(new THREE.Path().moveTo(-i, band).lineTo(-i, top).absarc(0, top, i, Math.PI, 0, true).lineTo(i, band).closePath());
+  const gilt = new THREE.MeshStandardMaterial(GILT);
+  const parts = [
+    new THREE.ExtrudeGeometry(shape, { depth: 0.012, bevelThickness: 0.003, bevelSize: 0.003, bevelSegments: 2, curveSegments: 32 }),
+    new THREE.BoxGeometry(0.022, 0.03, 0.024).translate(0, top + w, 0.008),
+    new THREE.SphereGeometry(0.012, 12, 8).translate(0, top + w + 0.025, 0.008),
+    new THREE.BoxGeometry(2 * w + 0.05, 0.018, 0.06).translate(0, 0.009, 0.026),
+    ...[-1, 1].map((s) => new THREE.TorusGeometry(0.024, 0.006, 6, 20, Math.PI * 1.3).rotateZ(s > 0 ? -0.15 : Math.PI + 0.15 - Math.PI * 0.3).translate(s * (w + 0.026), 0.024, 0.008)),
+  ];
+  const mesh = new THREE.Mesh(mergeGeometries(parts.map((g) => g.toNonIndexed())), gilt);
+  mesh.castShadow = mesh.receiveShadow = true;
   const group = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial(GILT);
-  const [mx, my, mz] = MAP.at;
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(MAP.size * 0.5, 0.012, 8, 72).rotateX(Math.PI / 2), mat);
-  ring.position.set(mx, my - 0.106, mz);
-  const SEG = 40, RAD = 8;
-  const brackets = [-0.22, 0.22].map((x) => {
-    const curve = new THREE.CubicBezierCurve3(
-      new THREE.Vector3(mx + x, my + 0.28, 0.012), new THREE.Vector3(mx + x, my - 0.04, 0.012),
-      new THREE.Vector3(mx + x, my - 0.108, 0.08), new THREE.Vector3(mx + x, my - 0.108, mz - 0.42),
-    );
-    const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, SEG, 0.011, RAD), mat);
-    mesh.receiveShadow = true;
-    return mesh;
-  });
-  group.add(ring, ...brackets);
+  group.position.set(0, base, 0.004);
+  group.add(mesh);
   return {
     group,
     set(u) {
       group.visible = u > 0.001;
-      ring.scale.setScalar(Math.max(u, 0.001));
-      for (const b of brackets) b.geometry.setDrawRange(0, Math.floor(u * SEG) * RAD * 6);
+      group.scale.set(0.6 + 0.4 * u, Math.max(u, 0.001), 1);
+    },
+  };
+}
+
+// The round dark console under the map, with a gilt rim, held from the wall by an arm and two braces. It slides out
+// of the wall.
+export function buildConsole() {
+  const [mx, my, mz] = MAP.at;
+  const top = my - 0.106, radius = MAP.size / 2 + 0.02;
+  const lacquer = new THREE.MeshStandardMaterial({ map: texture('lacquer', 2), roughness: 0.3, metalness: 0.1 });
+  const box = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
+  const parts = [new THREE.CylinderGeometry(radius, radius - 0.025, 0.035, 64).translate(mx, top - 0.0175, mz), box(0.34, 0.03, mz, mx, top - 0.05, mz / 2)];
+  for (const x of [-0.16, 0.16]) {
+    const run = mz - 0.12, drop = 0.3;
+    parts.push(new THREE.BoxGeometry(0.03, Math.hypot(run, drop), 0.03).rotateX(Math.atan2(run, drop)).translate(mx + x, top - 0.05 - drop / 2, run / 2), box(0.06, 0.38, 0.02, mx + x, top - 0.2, 0.01));
+  }
+  const body = new THREE.Mesh(mergeGeometries(parts), lacquer);
+  body.receiveShadow = true;
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(radius - 0.003, 0.008, 8, 96).rotateX(Math.PI / 2).translate(mx, top, mz), new THREE.MeshStandardMaterial(GILT));
+  const group = new THREE.Group();
+  group.add(body, rim);
+  return {
+    group,
+    set(u) {
+      group.visible = u > 0.001;
+      group.scale.z = Math.max(u, 0.001);
     },
   };
 }
