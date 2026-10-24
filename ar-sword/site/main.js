@@ -226,9 +226,14 @@ function screenRect(e) {
   [x0, y0, x1, y1] = [Math.max(x0, 0), Math.max(y0, 0), Math.min(x1, innerWidth), Math.min(y1, innerHeight)];
   return x0 < x1 && y0 < y1 ? [x0, y0, x1, y1] : null;
 }
-// How long `meters` on the wall look at that point, in video heights.
+// How wide `meters` along the wall look at that point, in video heights. Seen from the side the wall is
+// foreshortened, and so are the name plates, which keeps them inside their medallions.
+const edgeA = new THREE.Vector3(), edgeB = new THREE.Vector3();
 function sizeOnScreen(matrixWorld, meters) {
-  return (meters * focal) / Math.max(v3.setFromMatrixPosition(matrixWorld).length(), 0.1) / frameH;
+  edgeA.set(-meters / 2, 0, 0).applyMatrix4(matrixWorld).project(camera);
+  edgeB.set(meters / 2, 0, 0).applyMatrix4(matrixWorld).project(camera);
+  if (edgeA.z >= 1 || edgeB.z >= 1) return 0;
+  return Math.hypot((edgeB.x - edgeA.x) * frameW, (edgeB.y - edgeA.y) * frameH) / 2 / frameH;
 }
 
 let hands = null;

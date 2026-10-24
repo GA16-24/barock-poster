@@ -52,7 +52,7 @@ export function initLabels(labels, onPick) {
 // Labels are set in fixed CSS widths and scaled to the width their plate has on screen, so a name plate hangs
 // inside its medallion at any distance and can never overlap the next one.
 const NATURAL = { name: 76, zone: 150 };
-const SCALE = { name: [0.3, 1.5], zone: [0.45, 1.8] };
+const SCALE = { name: [0.3, 1.5], zone: [0.7, 1.6] };
 // items[i] is { uv: [u, v] or null when behind the camera, size: width in video heights, show: 0..1 }.
 export function placeLabels(items, shown) {
   labelLayer.hidden = !shown;
