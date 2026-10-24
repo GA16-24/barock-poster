@@ -18,7 +18,8 @@ const SNAP_DISTANCE = 0.3;
 // hit from long ago cannot lower the bar for a look-alike (the card reader) somewhere else.
 const HOLD_MS = { gyro: 30000, none: 100 };
 const TRACK_MS = 500;
-// A scene found again within REPLAY_MS of losing it is simply back; only a fresh find plays the entrance.
+// The entrance clock only runs while the scene shows, so losing the thermostat mid-entrance pauses it. Only a find
+// more than REPLAY_MS after the loss starts it over.
 const REPLAY_MS = 5000;
 // A card goes away when its object has been off screen, or the scene lost, for this long.
 const CARD_GRACE_MS = 300;
@@ -111,7 +112,7 @@ const wall = createWallTracker();
 let lastHit = null;
 let lastSeen = -Infinity;
 let lastVideoTime = -1;
-let appearStart = null, goneAt = -Infinity, strayedAt = null;
+let sceneAge = 0, wasSeen = false, goneAt = -Infinity, strayedAt = null;
 
 function resize(vw, vh) {
   videoW = vw;
@@ -221,11 +222,12 @@ function frame(now) {
   lastFrame = now;
 
   const seen = now - lastSeen < hold();
-  if (!seen && appearStart !== null) goneAt = now;
-  if (seen && appearStart === null) appearStart = now - (now - goneAt < REPLAY_MS ? 1e9 : 0);
-  if (!seen) appearStart = null;
+  if (!seen && wasSeen) goneAt = now;
+  if (seen && !wasSeen && now - goneAt > REPLAY_MS) sceneAge = 0;
+  if (seen) sceneAge += dt;
+  wasSeen = seen;
   stage.visible = seen;
-  updateScene(now / 1000, dt, seen ? (now - appearStart) / 1000 : 0);
+  updateScene(now / 1000, dt, sceneAge);
   scene.updateMatrixWorld();
 
   const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;
