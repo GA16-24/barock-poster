@@ -39,7 +39,7 @@ Die Seite lädt nichts von fremden Servern. three.js und MediaPipe liegen als Ko
 ## Ordner
 
 ```
-ar-sword/
+barock-ar/
   site/         die Webseite, so wie sie online geht
   test/         Testskripte, Fotos vom Thermostat und Handfotos
   tools/        Skripte, die Karten, Modelle, Titelseiten und site/vendor erzeugen
@@ -51,7 +51,7 @@ ar-sword/
 Man braucht Node.js, ffmpeg, Python 3 und Google Chrome.
 
 ```sh
-cd ar-sword
+cd barock-ar
 npm install
 npm run vendor      # kopiert three.js und MediaPipe nach site/vendor
 cd site && python3 -m http.server 8000 --bind 127.0.0.1
@@ -83,7 +83,7 @@ Das Handyvideo `IMG_0447.MOV`, mit dem die Erkennung aus 1 bis 3 m Entfernung ei
 ### Veröffentlichen
 
 ```sh
-cd ar-sword
+cd barock-ar
 npm run deploy
 ```
 
