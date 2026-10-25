@@ -1,0 +1,50 @@
+[
+  {
+    "id": "map-muenchen-osm",
+    "file": "site/models/maps/muenchen.glb",
+    "title": "München, Neuhauser Straße mit St. Michael: Gebäude, Straßen, Wasser, Bäume",
+    "author": "© OpenStreetMap contributors",
+    "license": "ODbL 1.0",
+    "url": "https://www.openstreetmap.org/copyright"
+  },
+  {
+    "id": "map-muenchen-terrain",
+    "file": "site/models/maps/muenchen.glb",
+    "title": "München, Neuhauser Straße mit St. Michael: Geländehöhen (Terrain Tiles)",
+    "author": "Mapzen. Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers. SRTM terrain data courtesy of the U.S. Geological Survey.",
+    "license": "Attribution required (terrain tiles attribution page)",
+    "url": "https://raw.githubusercontent.com/tilezen/joerd/master/docs/attribution.md"
+  },
+  {
+    "id": "map-nuernberg-osm",
+    "file": "site/models/maps/nuernberg.glb",
+    "title": "Nürnberg, Hallerwiese und Pegnitz: Gebäude, Straßen, Wasser, Bäume",
+    "author": "© OpenStreetMap contributors",
+    "license": "ODbL 1.0",
+    "url": "https://www.openstreetmap.org/copyright"
+  },
+  {
+    "id": "map-nuernberg-terrain",
+    "file": "site/models/maps/nuernberg.glb",
+    "title": "Nürnberg, Hallerwiese und Pegnitz: Geländehöhen (Terrain Tiles)",
+    "author": "Mapzen. Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers. SRTM terrain data courtesy of the U.S. Geological Survey.",
+    "license": "Attribution required (terrain tiles attribution page)",
+    "url": "https://raw.githubusercontent.com/tilezen/joerd/master/docs/attribution.md"
+  },
+  {
+    "id": "map-tuebingen-osm",
+    "file": "site/models/maps/tuebingen.glb",
+    "title": "Tübingen, Altstadt am Neckar: Gebäude, Straßen, Wasser, Bäume",
+    "author": "© OpenStreetMap contributors",
+    "license": "ODbL 1.0",
+    "url": "https://www.openstreetmap.org/copyright"
+  },
+  {
+    "id": "map-tuebingen-terrain",
+    "file": "site/models/maps/tuebingen.glb",
+    "title": "Tübingen, Altstadt am Neckar: Geländehöhen (Terrain Tiles)",
+    "author": "Mapzen. Europe terrain data produced using Copernicus data and information funded by the European Union - EU-DEM layers. SRTM terrain data courtesy of the U.S. Geological Survey.",
+    "license": "Attribution required (terrain tiles attribution page)",
+    "url": "https://raw.githubusercontent.com/tilezen/joerd/master/docs/attribution.md"
+  }
+]

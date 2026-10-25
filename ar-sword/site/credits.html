@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1c1712">
+<title>Quellen · Barock im Raum</title>
+<link rel="icon" href="data:,">
+<style>
+  body { margin: 0; padding: 24px 18px 48px; background: #1c1712; color: #f1e6cc; font: 16px/1.45 "Iowan Old Style", Palatino, Georgia, serif; }
+  main { max-width: 42em; margin: 0 auto; }
+  h1 { margin: 0 0 4px; color: #d9b45a; font-weight: normal; }
+  h2 { margin: 28px 0 8px; color: #d9b45a; font-size: 19px; font-weight: normal; }
+  a { color: #e7cf8f; }
+  ul { margin: 0; padding-left: 1.1em; }
+  li { margin: 6px 0; }
+  .meta { color: rgba(241, 230, 204, 0.7); font-size: 14px; }
+  .back { display: inline-block; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">Zurück zur App</a>
+  <h1>Quellen</h1>
+  <p class="meta">Woher die Bilder, 3D-Modelle, Karten und Texte in dieser App kommen.</p>
+  <div id="list"></div>
+</main>
+<script type="module">
+  const groups = [
+    ['assets', '3D-Köpfe und Gegenstände'],
+    ['maps', 'Karten'],
+    ['content', 'Titelseiten'],
+    ['hands', 'Handerkennung'],
+  ];
+  const list = document.getElementById('list');
+  const el = (tag, props = {}, ...kids) => {
+    const n = Object.assign(document.createElement(tag), props);
+    n.append(...kids);
+    return n;
+  };
+
+  for (const [file, title] of groups) {
+    const rows = await (await fetch(`data/credits/${file}.json`)).json();
+    list.append(el('h2', { textContent: title }), el('ul', {}, ...rows.map((r) => el('li', {},
+      el('a', { href: r.url, textContent: r.title }),
+      el('div', { className: 'meta', textContent: [r.author, r.license, r.method, r.reconstruction && 'Rekonstruktion, kein echtes Bild überliefert'].filter(Boolean).join(' · ') }),
+    ))));
+  }
+
+  const texts = await (await fetch('data/texts.json')).json();
+  const urls = [...new Set(Object.values(texts).flatMap((t) => t.sources))].sort();
+  list.append(el('h2', { textContent: 'Texte' }), el('ul', {}, ...urls.map((u) => el('li', {}, el('a', { href: u, textContent: decodeURI(u) })))));
+</script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { poseFromQuad } from '../site/pose.js';
+import * as THREE from 'three';
+import { poseFromQuad, wallPose } from '../site/pose.js';
 
 const f = 360, cx = 135, cy = 240;
 const W = 0.0305, H = 0.0225;
@@ -35,3 +36,22 @@ for (const { R, t } of cases) {
 
 assert.equal(poseFromQuad([[0, 0], [10, 0], [10, 0], [0, 0]], f, cx, cy), null);
 console.log(`pose: ${cases.length} synthetic poses recovered within 1e-6, degenerate quad rejected`);
+
+// wallPose at 1 to 1.5 m, off center and tilted up to 52°: one of its two rotations is the true one, and the
+// perspective cue points to it, since these corners carry no noise.
+const big = { f: 960, cx: 360, cy: 640 };
+const wallCases = [[0, 0, 0, [0, 0, -1]], [0.5, 0.1, 0.2, [0.3, 0.2, -1.5]], [-0.7, -0.3, -0.1, [-0.4, 0.5, -1.2]], [0.2, 0.9, 0, [0, -0.6, -0.8]]];
+for (const [yaw, pitch, roll, t] of wallCases) {
+  const truth = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, roll));
+  const at = new THREE.Vector3(...t);
+  const quad = corners.map(([x, y]) => {
+    const p = new THREE.Vector3(x, y, 0).applyQuaternion(truth).add(at);
+    return [big.cx + (big.f * p.x) / -p.z, big.cy - (big.f * p.y) / -p.z];
+  });
+  const w = wallPose(quad, big.f, big.cx, big.cy);
+  const basis = (cols) => new THREE.Matrix4().makeBasis(...cols.map((c) => new THREE.Vector3(...c)));
+  const q = new THREE.Quaternion().setFromRotationMatrix(basis(w.frame).multiply(basis(w.rotations[w.cue >= 0 ? 0 : 1])));
+  assert.ok(q.angleTo(truth) < 1e-3, `rotation off by ${q.angleTo(truth)} rad`);
+  assert.ok(new THREE.Vector3(...w.ray).multiplyScalar(w.distance).distanceTo(at) < 1e-3, 'position off');
+}
+console.log(`wallPose: ${wallCases.length} synthetic poses recovered within 1 mm and 0.06°`);

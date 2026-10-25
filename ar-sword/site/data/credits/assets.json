@@ -1,0 +1,168 @@
+[
+  {
+    "id": "andreae",
+    "file": "site/models/heads/andreae.glb",
+    "title": "Johann Valentin Andreae im Alter von 42 Jahren (Kupferstich, 1628)",
+    "author": "Johann Pfann",
+    "license": "Public domain",
+    "url": "https://commons.wikimedia.org/wiki/File:Johann_Valentin_Andreae_aged_42.jpg",
+    "method": "Qwen-Image-Edit-2511 + TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "bidermann",
+    "file": "site/models/heads/bidermann.glb",
+    "title": "Rekonstruktion: Jesuitenpater um 1630 (kein authentisches Bildnis bekannt)",
+    "author": "generiert mit Qwen-Image-Edit-2511 und TRELLIS.2",
+    "license": "eigene Erzeugung",
+    "url": "",
+    "reconstruction": true,
+    "method": "Qwen-Image-Edit-2511 + TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "birken",
+    "file": "site/models/heads/birken.glb",
+    "title": "Sigmund von Birken (Kupferstich)",
+    "author": "Jacob von Sandrart",
+    "license": "Public domain",
+    "url": "https://commons.wikimedia.org/wiki/File:Sigmund_von_Birken_Portrait_von_Jacob_von_Sandrart.jpg",
+    "method": "Qwen-Image-Edit-2511 + TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "krone",
+    "file": "site/models/adel/krone.glb",
+    "title": "Rudolfinische Hauskrone (Kaiserkrone des Kaisertums Österreich), Weltliche Schatzkammer Wien",
+    "author": "Gryffindor",
+    "license": "Public domain",
+    "url": "https://commons.wikimedia.org/wiki/File:Weltliche_Schatzkammer_Wien_white.jpg",
+    "method": "TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "peruecke",
+    "file": "site/models/adel/peruecke.glb",
+    "title": "Bildnis eines Adligen mit Allonge-Perücke, Deutsches Hygiene-Museum Dresden (Vorlage; Perücke daraus generiert)",
+    "author": "Dguendel (Foto), unbekannter Maler",
+    "license": "CC BY 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Dresden,_Deutsches_Hygiene-Museum,_unbekannter_K%C3%BCnstler,_Bildnis_eines_Adligen_mit_Allonge-Per%C3%BCcke.jpg",
+    "method": "Qwen-Image-Edit-2511 + TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "kutsche",
+    "file": "site/models/adel/kutsche.glb",
+    "title": "Wien-Schönbrunn, die Wagenburg, Kutsche",
+    "author": "Dguendel",
+    "license": "CC BY 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Wien-Sch%C3%B6nbrunn,_die_Wagenburg,_Kutsche-1.JPG",
+    "method": "Qwen-Image-Edit-2511 + TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "schloss",
+    "file": "site/models/adel/schloss.glb",
+    "title": "Schloss Nymphenburg, Hauptgebäude (Vorlage; Modell daraus generiert)",
+    "author": "Peulle",
+    "license": "CC BY-SA 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Schloss_Nymphenburg_main_building.jpg",
+    "method": "Qwen-Image-Edit-2511 + TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "degen",
+    "file": "site/models/adel/degen.glb",
+    "title": "Antique Estoc",
+    "author": "James Ray Cock, Ulan Cabanilla",
+    "license": "CC0",
+    "url": "https://polyhaven.com/a/antique_estoc"
+  },
+  {
+    "id": "spiegel",
+    "file": "site/models/adel/spiegel.glb",
+    "title": "Ornate Mirror 01",
+    "author": "James Ray Cock",
+    "license": "CC0",
+    "url": "https://polyhaven.com/a/ornate_mirror_01"
+  },
+  {
+    "id": "kronleuchter",
+    "file": "site/models/adel/kronleuchter.glb",
+    "title": "Chandelier 03",
+    "author": "Kirill Sannikov",
+    "license": "CC0",
+    "url": "https://polyhaven.com/a/Chandelier_03"
+  },
+  {
+    "id": "pokal",
+    "file": "site/models/adel/pokal.glb",
+    "title": "Brass Goblets",
+    "author": "Tina",
+    "license": "CC0",
+    "url": "https://polyhaven.com/a/brass_goblets"
+  },
+  {
+    "id": "bauernhaus",
+    "file": "site/models/volk/bauernhaus.glb",
+    "title": "Fachwerkhaus aus Witzelroda, Hennebergisches Museum Kloster Veßra",
+    "author": "Ermell",
+    "license": "CC BY-SA 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Kloster_Ve%C3%9Fra_Fachwerkhaus_Witzelroda_-20220714-RM-152756.jpg",
+    "method": "TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "pflug",
+    "file": "site/models/volk/pflug.glb",
+    "title": "Hölzerner Pferdepflug (Kuka), traditionelle Landwirtschaft",
+    "author": "Orce Wiki",
+    "license": "CC BY-SA 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Wooden_horse_plough_-_kuka_02_-_Macedonian_traditional_agriculture.jpg",
+    "method": "Qwen-Image-Edit-2511 + TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "sense",
+    "file": "site/models/volk/sense.glb",
+    "title": "Sense (Werkzeug)",
+    "author": "1971markus",
+    "license": "CC BY-SA 3.0 DE",
+    "url": "https://commons.wikimedia.org/wiki/File:Sense_(Werkzeug).jpg",
+    "method": "Qwen-Image-Edit-2511 + TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "brot",
+    "file": "site/models/volk/brot.glb",
+    "title": "Rye sourdough loaf",
+    "author": "HadynMD",
+    "license": "CC BY-SA 4.0",
+    "url": "https://commons.wikimedia.org/wiki/File:Ukrainian_Rye_Sourdough_(New_Westminster).jpg",
+    "method": "TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "pestmaske",
+    "file": "site/models/volk/pestmaske.glb",
+    "title": "Pesthaube, 17. Jahrhundert",
+    "author": "Anagoria",
+    "license": "CC BY 3.0",
+    "url": "https://commons.wikimedia.org/wiki/File:17._Jht._Pesthaube_anagoria.JPG",
+    "method": "TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "helm",
+    "file": "site/models/volk/helm.glb",
+    "title": "Comb Morion, The Metropolitan Museum of Art",
+    "author": "The Metropolitan Museum of Art",
+    "license": "CC0",
+    "url": "https://commons.wikimedia.org/wiki/File:Comb_Morion_MET_DT4376.jpg",
+    "method": "TRELLIS.2 (Bild zu 3D)"
+  },
+  {
+    "id": "fass",
+    "file": "site/models/volk/fass.glb",
+    "title": "Wooden Barrels 01",
+    "author": "James Ray Cock",
+    "license": "CC0",
+    "url": "https://polyhaven.com/a/wooden_barrels_01"
+  },
+  {
+    "id": "spinnrad",
+    "file": "site/models/volk/spinnrad.glb",
+    "title": "Spinning Wheel 01",
+    "author": "Sofia Pahaoja",
+    "license": "CC0",
+    "url": "https://polyhaven.com/a/spinning_wheel_01"
+  }
+]
