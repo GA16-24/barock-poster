@@ -1,7 +1,7 @@
-import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { ITEMS, AUTHORS, ZONES } from '../site/catalog.js';
+import { launch, gpuName } from './browser.mjs';
 import { withGpu } from './gpu-lock.mjs';
 import { serve } from './serve.mjs';
 
@@ -27,10 +27,6 @@ console.log(`models on disk: ${expected.length - AUTHORS.length} of ${ITEMS.leng
 
 const DISTANCE = 1.8;
 const PAN = { center: 0, left: Math.atan(ZONES.adel.x / -DISTANCE), right: Math.atan(ZONES.volk.x / -DISTANCE) };
-
-// The simulated pan advances once per rendered frame, and software rendering of all models is too slow for it,
-// so on macOS the test draws with the real GPU, which needs a visible window.
-const gpu = process.platform === 'darwin';
 
 const failures = [];
 const check = (ok, what) => {
@@ -189,7 +185,7 @@ async function test(origin, browser) {
     requestAnimationFrame(tick);
   }));
   const work = await page.evaluate(() => globalThis.__ar.frameMs());
-  console.log(`  frame: ${raf.toFixed(1)} ms between frames, ${work.toFixed(1)} ms app work per frame (${gpu ? 'Metal GPU' : "swiftshader"}, not a phone)`);
+  console.log(`  frame: ${raf.toFixed(1)} ms between frames, ${work.toFixed(1)} ms app work per frame (${gpuName}, not a phone)`);
 
   await panTo('left');
   const [far] = (await page.evaluate(() => globalThis.__ar.objects()))
@@ -224,14 +220,7 @@ await withGpu(async () => {
   const { origin, close } = await serve(root);
   let browser;
   try {
-    browser = await chromium.launch({
-      channel: 'chrome',
-      headless: !gpu,
-      args: [
-        ...(gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
-        '--autoplay-policy=no-user-gesture-required',
-      ],
-    });
+    browser = await launch(['--autoplay-policy=no-user-gesture-required']);
     await test(origin, browser);
   } catch (e) {
     failures.push(e.message);
