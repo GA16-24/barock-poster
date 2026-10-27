@@ -8,7 +8,6 @@ import * as ui from './ui.js';
 // At 1 to 2 m the LCD is only about 35 px wide even at 1280.
 const DETECT_LONG_SIDE = 1280;
 const FOCAL_PER_LONG_SIDE = 0.75;
-const POSITION_SMOOTHING = 0.5;
 // Smoothing runs in the gyro's world frame, where the wall never moves, so heavy rotation smoothing adds no lag when the phone turns.
 // Without the gyro it would run in camera space and trail every turn, and the wall tracker has smoothed the tilt already.
 const ROTATION_SMOOTHING = 0.2;
@@ -174,13 +173,10 @@ function detect(now, image, frameTime) {
     targetPos.applyQuaternion(frameRot);
     targetQuat.premultiply(frameRot);
     if (worldFromCamera) uprightOnWall(targetQuat);
-    if (jumped(hit.quad) || !tracking) {
-      pos.copy(targetPos);
-      quat.copy(targetQuat);
-    } else {
-      pos.lerp(targetPos, POSITION_SMOOTHING);
-      quat.slerp(targetQuat, worldFromCamera ? ROTATION_SMOOTHING : 1);
-    }
+    // The wall tracker smooths the distance; the direction to the LCD is exact and stays unsmoothed.
+    pos.copy(targetPos);
+    if (jumped(hit.quad) || !tracking) quat.copy(targetQuat);
+    else quat.slerp(targetQuat, worldFromCamera ? ROTATION_SMOOTHING : 1);
     lastSeen = now;
     lastHit = hit;
   }
