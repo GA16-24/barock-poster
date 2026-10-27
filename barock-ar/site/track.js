@@ -18,7 +18,7 @@ const normals = [new THREE.Vector3(), new THREE.Vector3()];
 const correction = new THREE.Quaternion(), frameQuat = new THREE.Quaternion();
 const vec = (a) => new THREE.Vector3(...a);
 
-export function createWallTracker() {
+export function createWallTracker({ raw = false } = {}) {
   // The smoothed LCD normal in the line-of-sight frame, and the summed votes of the perspective cue for the tilt the
   // tracker picked (positive agrees, negative wants the mirror).
   let normal = null, vote = 0;
@@ -29,7 +29,7 @@ export function createWallTracker() {
       vote = 0;
     },
     // Writes the LCD pose in camera space; false when the quad is degenerate.
-    update(quad, f, cx, cy, position, quaternion) {
+    update(quad, f, cx, cy, t, position, quaternion) {
       const w = wallPose(quad, f, cx, cy);
       if (!w) return false;
       w.rotations.forEach((r, i) => {
@@ -50,7 +50,7 @@ export function createWallTracker() {
           vote = -vote;
           this.flips++;
         }
-        normal.lerp(normals[pick], TILT_SMOOTHING).normalize();
+        normal.lerp(normals[pick], raw ? 1 : TILT_SMOOTHING).normalize();
       }
       // Keep the measured roll and swap only the tilt for the smoothed one.
       correction.setFromUnitVectors(normals[pick], normal);

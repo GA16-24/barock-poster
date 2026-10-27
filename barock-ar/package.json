@@ -18,7 +18,8 @@
     "test:scene": "node test/scene.mjs",
     "test:assets": "node tools/assets/budget.mjs",
     "demo": "node test/demo.mjs",
-    "test:track": "node test/replay-track.mjs"
+    "test:track": "node test/replay-track.mjs",
+    "test:shake": "node test/shake.mjs"
   },
   "type": "module",
   "dependencies": {

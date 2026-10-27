@@ -170,7 +170,7 @@ function detect(now, image, frameTime) {
   // A fast pan can leave the box, so a miss there still searches the whole frame.
   const hit = (tracking && detectNear(lastHit)) || detectScreen(grayOf(0, 0, frameW, frameH), frameW, frameH, tracking ? lastHit : null);
   if (hit && !tracking) wall.reset();
-  if (hit && wall.update(hit.quad, focal, frameW / 2, frameH / 2, targetPos, targetQuat)) {
+  if (hit && wall.update(hit.quad, focal, frameW / 2, frameH / 2, now / 1000, targetPos, targetQuat)) {
     targetPos.applyQuaternion(frameRot);
     targetQuat.premultiply(frameRot);
     if (worldFromCamera) uprightOnWall(targetQuat);
