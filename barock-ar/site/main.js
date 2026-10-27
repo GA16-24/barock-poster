@@ -267,7 +267,11 @@ function frame(now) {
   const over = handUv ? entryAt(handUv) : null;
   setGaze(handUv ? raycaster.ray : null);
   setHover(over);
-  if (hand?.grab && over) trigger(over);
+  // A fist opens the object under the hand, and the next fist closes it again wherever the hand is.
+  if (hand?.grab) {
+    if (selectedEntry()) trigger(null);
+    else if (over) trigger(over);
+  }
   ui.setCursor(handUv, !!hand?.closed, !!over);
 
   if (now - lastShadow >= SHADOW_MS) {

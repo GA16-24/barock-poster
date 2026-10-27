@@ -165,9 +165,13 @@ async function test(origin, browser) {
   check(await title() === texts[grabbed.id].title, `hand grab on ${grabbed.id} shows "${await title()}"`);
   await checkCard(grabbed.id);
   await page.screenshot({ path: `${out}/card-hand-${grabbed.id}.png` });
+  await page.evaluate((h) => globalThis.__ar.setHand(h), hand);
+  await page.waitForTimeout(300);
+  await page.evaluate((h) => globalThis.__ar.setHand({ ...h, closed: true, grab: true }), hand);
+  await page.waitForSelector('#card', { state: 'hidden', timeout: 1500 }).catch(() => {});
+  check(await page.isHidden('#card') && await page.evaluate(() => globalThis.__ar.selected()) === null, 'a second fist closes the card');
   await page.evaluate(() => globalThis.__ar.setHand(null));
 
-  await page.click('#card .close');
   const other = AUTHORS[1];
   await page.click(`.label.name >> text=${other.name.split(' ').at(-1)}`);
   await page.waitForTimeout(3000);
