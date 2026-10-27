@@ -35,6 +35,22 @@ async function run(browser, origin, gyro) {
       const ctx = canvas.getContext('2d');
       const probe = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
       probe.canvas.width = 720; probe.canvas.height = 1280;
+      const indexOf = (source) => {
+        probe.drawImage(source, 0, 1268, 480, 1, 0, 1268, 480, 1);
+        const px = probe.getImageData(0, 1268, 480, 1).data;
+        let n = 0;
+        for (let b = 0; b < 12; b++) if (px[(b * 40 + 20) * 4] > 128) n |= 1 << b;
+        return n;
+      };
+      // An app that draws the camera image behind the scene shows the frame it took a VideoFrame of, not the video's.
+      let drawn;
+      const AppFrame = globalThis.VideoFrame;
+      globalThis.VideoFrame = class extends AppFrame {
+        constructor(source, init) {
+          super(source, init);
+          if (source === document.getElementById('video')) drawn = indexOf(this);
+        }
+      };
       const angles = [], times = [];
       renderer.setClearColor(0xc9b9a3);
       const scene = new THREE.Scene();
@@ -61,10 +77,7 @@ async function run(browser, origin, gyro) {
         if (gyro) dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: a / deg, beta: 90, gamma: 0 }));
         const anchor = globalThis.__anchor, video = document.getElementById('video');
         if (anchor && video.videoWidth) {
-          probe.drawImage(video, 0, 0);
-          const px = probe.getImageData(0, 1268, 480, 1).data;
-          let shown = 0;
-          for (let b = 0; b < 12; b++) if (px[(b * 40 + 20) * 4] > 128) shown |= 1 << b;
+          const shown = drawn ?? indexOf(video);
           globalThis.__samples.push({ t: times[shown] ?? t, a: angles[shown] ?? a, lag: index - shown, visible: anchor.children[0].visible, m: [...anchor.matrix.elements] });
         }
         requestAnimationFrame(tick);
