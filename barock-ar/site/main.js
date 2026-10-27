@@ -102,10 +102,12 @@ const moved = (hit, dx, dy) => hit && { ...hit, quad: hit.quad.map(([x, y]) => [
 
 // The camera image is drawn behind the scene from the frame detect() measured. The live <video> runs ahead of a
 // slow frame loop, so a scene drawn over it swam against the wall whenever the phone moved. The video stays in the
-// page, covered by the canvas, because it is the image's source.
+// page, covered by the canvas, because it is the image's source. Safari before 16.4 has no VideoFrame, so there the
+// scene is drawn over the live video as before.
+const snapshots = typeof VideoFrame === 'function';
 const cameraImage = new THREE.VideoFrameTexture();
 cameraImage.colorSpace = THREE.SRGBColorSpace;
-scene.background = cameraImage;
+if (snapshots) scene.background = cameraImage;
 
 let videoW = 0, videoH = 0, frameW = 0, frameH = 0, focal = 0;
 let lastQuad = null;
@@ -255,41 +257,45 @@ function frame(now, { captureTime, presentationTime }) {
   video.requestVideoFrameCallback(frame);
   const t0 = performance.now();
   if (video.videoWidth !== videoW || video.videoHeight !== videoH) resize(video.videoWidth, video.videoHeight);
-  const image = new VideoFrame(video);
-  detect(now, image, captureTime ?? presentationTime);
-  cameraImage.setFrame(image);
-  const dt = lastFrame === null ? 0 : Math.min((now - lastFrame) / 1000, 0.25);
-  lastFrame = now;
+  const image = snapshots ? new VideoFrame(video) : video;
+  let seen;
+  try {
+    detect(now, image, captureTime ?? presentationTime);
+    if (snapshots) cameraImage.setFrame(image);
+    const dt = lastFrame === null ? 0 : Math.min((now - lastFrame) / 1000, 0.25);
+    lastFrame = now;
 
-  const seen = now - lastSeen < hold();
-  if (!seen && wasSeen) goneAt = now;
-  if (seen && !wasSeen && now - goneAt > REPLAY_MS) sceneAge = 0;
-  if (seen) sceneAge += dt;
-  wasSeen = seen;
-  stage.visible = seen;
-  updateScene(now / 1000, dt, sceneAge);
-  scene.updateMatrixWorld();
+    seen = now - lastSeen < hold();
+    if (!seen && wasSeen) goneAt = now;
+    if (seen && !wasSeen && now - goneAt > REPLAY_MS) sceneAge = 0;
+    if (seen) sceneAge += dt;
+    wasSeen = seen;
+    stage.visible = seen;
+    updateScene(now / 1000, dt, sceneAge);
+    scene.updateMatrixWorld();
 
-  const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;
-  if (fakeHand?.grab) fakeHand = { ...fakeHand, grab: false };
-  const handUv = hand && [hand.x, hand.y];
-  const over = handUv ? entryAt(handUv) : null;
-  setGaze(handUv ? raycaster.ray : null);
-  setHover(over);
-  // A fist opens the object under the hand, and the next fist closes it again wherever the hand is.
-  if (hand?.grab) {
-    if (selectedEntry()) trigger(null);
-    else if (over) trigger(over);
+    const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;
+    if (fakeHand?.grab) fakeHand = { ...fakeHand, grab: false };
+    const handUv = hand && [hand.x, hand.y];
+    const over = handUv ? entryAt(handUv) : null;
+    setGaze(handUv ? raycaster.ray : null);
+    setHover(over);
+    // A fist opens the object under the hand, and the next fist closes it again wherever the hand is.
+    if (hand?.grab) {
+      if (selectedEntry()) trigger(null);
+      else if (over) trigger(over);
+    }
+    ui.setCursor(handUv, !!hand?.closed, !!over);
+
+    if (now - lastShadow >= SHADOW_MS) {
+      renderer.shadowMap.needsUpdate = true;
+      lastShadow = now;
+    }
+    renderer.render(scene, camera);
+  } finally {
+    // The render uploaded it, and an open frame holds one of the camera's few buffers even when a step threw.
+    if (snapshots) image.close();
   }
-  ui.setCursor(handUv, !!hand?.closed, !!over);
-
-  if (now - lastShadow >= SHADOW_MS) {
-    renderer.shadowMap.needsUpdate = true;
-    lastShadow = now;
-  }
-  renderer.render(scene, camera);
-  // The render uploaded it; an open frame holds one of the camera's few buffers.
-  image.close();
 
   ui.placeLabels(labels.map((l) => ({ uv: uvOf(l.marker), size: sizeOnScreen(l.marker.matrixWorld, l.width), show: l.show })), seen);
   const sel = selectedEntry();

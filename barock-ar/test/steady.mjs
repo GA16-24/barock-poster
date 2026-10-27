@@ -105,8 +105,8 @@ async function makeClip(origin) {
 // Timing and pose hooks spliced into the app's main.js as served; the app itself stays untouched.
 function instrument(src) {
   const splices = [
-    [/^ {2}workCtx\.drawImage\(.*\n/m, '', '  __steady.processed(workCtx, frameTime, frameRot.toArray());\n'],
-    [/^ {2}(?:if \(!)?detect\(.*\n/m, '  const d0 = performance.now();\n', '  const d1 = performance.now();\n'],
+    [/^ *workCtx\.drawImage\(.*\n/m, '', '  __steady.processed(workCtx, frameTime, frameRot.toArray());\n'],
+    [/^ *(?:if \(!)?detect\(.*\n/m, '  const d0 = performance.now();\n', '  const d1 = performance.now();\n'],
     ['  const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;\n', '  const h0 = performance.now();\n', '  const h1 = performance.now();\n'],
     ['  renderer.render(scene, camera);\n', '  const r0 = performance.now();\n',
       '  __steady.rendered(now, [d1 - d0, h1 - h0, performance.now() - r0], anchor.matrix.toArray(), stage.visible, !!hands, renderer.getContext(),\n'
