@@ -13,7 +13,9 @@ import { serve } from './serve.mjs';
 // keep coming at 30 fps while the app's main thread is busy, as on a phone; each frame carries its index as 12 blocks
 // along the bottom edge. --cpu 1,4 runs once per CDP CPU throttling rate, --hands loads the hand model (it is blocked
 // otherwise; the clip has no hand, but its inference costs loop time), --runs repeats each setting. Each run's raw
-// samples go to test/out/steady-*.json; passing such files instead re-analyzes them without a browser.
+// samples go to test/out/steady-*.json; passing such files instead re-analyzes them without a browser. A run fails
+// when (a) is off by more than MAX_P95 px at the 95th percentile or the screen shows a newer camera frame than the
+// one the anchor was measured in for most of the time.
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
   options: { cpu: { type: 'string', default: '1' }, hands: { type: 'boolean', default: false }, runs: { type: 'string', default: '1' } },
@@ -27,6 +29,7 @@ const WINDOW = [3, 11.5];
 // 4 renders over 10 ms per frame blur the motion like a camera's exposure.
 const EXPOSURE = { ms: 10, samples: 4 };
 const POINTS = { a: [0, 0, 0], b: [0.15, 0.1, 0] };
+const MAX_P95 = 8;
 
 // Camera yaw (left positive) and pitch (up positive) in radians at clip time t.
 function pose(t) {
@@ -102,15 +105,17 @@ async function makeClip(origin) {
 // Timing and pose hooks spliced into the app's main.js as served; the app itself stays untouched.
 function instrument(src) {
   const splices = [
-    ['  workCtx.drawImage(video, 0, 0, frameW, frameH);\n', '', '  __steady.processed(workCtx, frameTime, frameRot.toArray());\n'],
-    ['  if (!detect(now)) return;\n', '  const d0 = performance.now();\n', '  const d1 = performance.now();\n'],
+    [/^ *workCtx\.drawImage\(.*\n/m, '', '  __steady.processed(workCtx, frameTime, frameRot.toArray());\n'],
+    [/^ *(?:if \(!)?detect\(.*\n/m, '  const d0 = performance.now();\n', '  const d1 = performance.now();\n'],
     ['  const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;\n', '  const h0 = performance.now();\n', '  const h1 = performance.now();\n'],
     ['  renderer.render(scene, camera);\n', '  const r0 = performance.now();\n',
-      '  __steady.rendered(now, [d1 - d0, h1 - h0, performance.now() - r0], anchor.matrix.toArray(), stage.visible, !!hands);\n'],
+      '  __steady.rendered(now, [d1 - d0, h1 - h0, performance.now() - r0], anchor.matrix.toArray(), stage.visible, !!hands, renderer.getContext(),\n'
+      + '    scene.background?.isTexture ? renderer.properties.get(scene.background).__webglTexture : null);\n'],
   ];
   for (const [needle, before, after] of splices) {
-    if (!src.includes(needle)) throw new Error(`main.js no longer contains ${JSON.stringify(needle)}`);
-    src = src.replace(needle, before + needle + after);
+    const line = typeof needle === 'string' ? (src.includes(needle) ? needle : null) : src.match(needle)?.[0];
+    if (!line) throw new Error(`main.js no longer contains ${needle}`);
+    src = src.replace(line, before + line + after);
   }
   return src;
 }
@@ -124,7 +129,37 @@ function sim({ poseSrc, decodeSrc, W, H, FPS }) {
   S.processed = (ctx, frameTime, q) => {
     S.last = { i: decode(ctx.getImageData(0, H - 12, 480, 1).data, 4, 0), frameTime, q };
   };
-  S.rendered = (now, ms, m, visible, hands) => S.renders.push({ now, end: performance.now(), ms, m, visible, hands, ...S.last });
+  // Which camera frame the canvas shows, read in the task that drew it, so no preserved drawing buffer is needed:
+  // from the canvas's own pixels, or where the scene covers the barcode, from the texture its background was drawn
+  // from. null when the canvas has no camera image (a transparent overlay over the video).
+  const row = new Uint8Array(4 * 4096);
+  let fb = null;
+  const decodeRow = (w) => {
+    let n = 0;
+    for (let b = 0; b < 12; b++) {
+      const bits = [8, 20, 32].map((dx) => {
+        const j = 4 * Math.floor(((b * 40 + dx) / W) * w), [r, g, bl, a] = row.subarray(j, j + 4);
+        if (a < 250) return null;
+        return r > 175 && g > 175 && bl > 175 ? 1 : r < 80 && g < 80 && bl < 80 ? 0 : null;
+      });
+      if (bits.some((x) => x === null || x !== bits[0])) return null;
+      n |= bits[0] << b;
+    }
+    return n;
+  };
+  const drawnFrame = (gl, background) => {
+    gl.readPixels(0, Math.floor((12 / H) * gl.drawingBufferHeight), gl.drawingBufferWidth, 1, gl.RGBA, gl.UNSIGNED_BYTE, row);
+    const onCanvas = decodeRow(gl.drawingBufferWidth);
+    if (onCanvas !== null) return { drawn: onCanvas, drawnFrom: 'canvas' };
+    if (!background) return { drawn: null, drawnFrom: null };
+    gl.bindFramebuffer(gl.FRAMEBUFFER, (fb ??= gl.createFramebuffer()));
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, background, 0);
+    gl.readPixels(0, 12, W, 1, gl.RGBA, gl.UNSIGNED_BYTE, row);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { drawn: decodeRow(W), drawnFrom: 'texture' };
+  };
+  S.rendered = (now, ms, m, visible, hands, gl, background) =>
+    S.renders.push({ now, end: performance.now(), ms, m, visible, hands, ...drawnFrame(gl, background), ...S.last });
   const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
   navigator.mediaDevices.getUserMedia = async () => {
     // A phone held upright streams portrait frames; the app's landscape request would make Chrome crop the clip.
@@ -167,7 +202,7 @@ const stats = (xs) => {
   return { med: at(0.5), p95: at(0.95), max: at(1) };
 };
 
-function analyze({ t0, shown, renders, sameFrame }) {
+function analyze({ t0, shown, renders }) {
   // The compositor starts a frame every vsync. It shows a camera frame from the first vsync after its presentation
   // time, and the overlay drawn in a requestAnimationFrame from that callback's vsync if the work ended within one
   // vsync, else from the first vsync after it ended. Camera frames the main thread never saw are placed on a line
@@ -188,7 +223,7 @@ function analyze({ t0, shown, renders, sameFrame }) {
     while (renders[k + 1] && onScreenAt(renders[k + 1]) <= tau + 1) k++;
     while (presAt(shownI + 1) <= tau) shownI++;
     const r = renders[k];
-    const i = sameFrame ? r.i : shownI;
+    const i = r.drawn ?? shownI;
     ticks.push({
       visible: r.visible, lag: i - r.i,
       a: dist(drawn(r.m, POINTS.a), truth(i, POINTS.a)), b: dist(drawn(r.m, POINTS.b), truth(i, POINTS.b)),
@@ -211,7 +246,9 @@ function analyze({ t0, shown, renders, sameFrame }) {
     shake: stats(shake), lag: stats(seen.map((t) => t.lag)), gyro: stats(gyro),
     detect: stats(inWindow.map((r) => r.ms[0])), hands: stats(inWindow.map((r) => r.ms[1])), render: stats(inWindow.map((r) => r.ms[2])),
     interval: stats(intervals), depth: stats(inWindow.filter((r) => r.visible).map((r) => -r.m[14])), jitter,
-    stamp, handsFrom: handsAt ? clipTime(handsAt.end) : null,
+    stamp, drawn: inWindow.filter((r) => r.drawn != null).length / inWindow.length,
+    fromCanvas: inWindow.filter((r) => r.drawnFrom === 'canvas').length / inWindow.length,
+    drawnMismatch: inWindow.filter((r) => r.drawn != null && r.drawn !== r.i).length, handsFrom: handsAt ? clipTime(handsAt.end) : null,
   };
 }
 
@@ -241,7 +278,6 @@ async function run(clip, origin, cpu) {
       const gl = document.createElement('canvas').getContext('webgl2');
       return gl.getParameter(gl.getExtension('WEBGL_debug_renderer_info').UNMASKED_RENDERER_WEBGL);
     });
-    data.sameFrame = await page.evaluate(() => getComputedStyle(document.getElementById('video')).visibility === 'hidden');
     return data;
   } finally {
     await browser.close();
@@ -250,6 +286,7 @@ async function run(clip, origin, cpu) {
 
 const f = (x) => (Number.isFinite(x) ? x.toFixed(1) : '-');
 const triple = (s) => `${f(s.med)}/${f(s.p95)}/${f(s.max)}`;
+const failures = [];
 function report(name, data) {
   const r = analyze(data);
   console.log(`${name} on ${data.gpu ?? 'an unrecorded GPU'}`);
@@ -259,7 +296,11 @@ function report(name, data) {
   console.log(`  gyro looked up at the capture time ${f(r.stamp.med)} ms (median, p95 ${f(r.stamp.p95)}, max ${f(r.stamp.max)})`);
   console.log(`  shown minus processed frame ${triple(r.lag)}; overlay updates every ${triple(r.interval)} ms`);
   console.log(`  ms per update: detect ${triple(r.detect)}  hands ${triple(r.hands)}  render ${triple(r.render)}`);
+  console.log(`  canvas shows the camera image in ${(r.drawn * 100).toFixed(0)}% of updates (barcode visible on the canvas in `
+    + `${(r.fromCanvas * 100).toFixed(0)}%, else read from the background texture), ${r.drawnMismatch} of them not the processed frame`);
   console.log(`  anchor depth ${r.depth.med.toFixed(3)} m (truth ${DISTANCE}); capture time off the 30 fps grid ${triple(r.jitter)} ms`);
+  if (r.a.p95 > MAX_P95) failures.push(`${name}: (a) p95 ${f(r.a.p95)} px is over ${MAX_P95}`);
+  if (r.lag.med > 0) failures.push(`${name}: the screen shows a camera frame ${r.lag.med} newer than the anchor's at the median`);
 }
 
 console.log('px in the 720x1280 frame as median/p95/max; (a) LCD center, (b) 0.15 m right, 0.1 m up');
@@ -281,3 +322,5 @@ if (positionals.length) {
     close();
   }
 }
+for (const failure of failures) console.log(`FAIL ${failure}`);
+if (failures.length) process.exit(1);

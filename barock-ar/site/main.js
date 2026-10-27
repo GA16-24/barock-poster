@@ -13,6 +13,8 @@ const POSITION_SMOOTHING = 0.5;
 // Without the gyro it would run in camera space and trail every turn, and the wall tracker has smoothed the tilt already.
 const ROTATION_SMOOTHING = 0.2;
 const SNAP_DISTANCE = 0.3;
+// While tracking, a box this many LCD widths wide around the last hit is searched first, a small part of the frame.
+const ROI_WIDTHS = 8, ROI_MIN = 240;
 // With the gyro the scene stays fixed in the room while the user pans across its 2.3 m; without it a held pose
 // would be glued to the screen. The detector only treats the last hit as a live track for TRACK_MS, so a stale
 // hit from long ago cannot lower the bar for a look-alike (the card reader) somewhere else.
@@ -84,14 +86,6 @@ function rotationAt(t, out) {
   return out.slerpQuaternions(a.q, b.q, (t - a.t) / (b.t - a.t));
 }
 
-// Chrome on Android stamps camera frames with the sensor time and Safari with their arrival from the camera.
-// Without a capture time (a canvas stream in desktop Chrome) the compositor handoff is the closest known time.
-let frameTime = null;
-video.requestVideoFrameCallback?.(function onFrame(_, m) {
-  frameTime = m.captureTime ?? m.presentationTime;
-  video.requestVideoFrameCallback(onFrame);
-});
-
 // The thermostat hangs level on a vertical wall, so only its heading comes from the noisy quad.
 const normal = new THREE.Vector3(), right = new THREE.Vector3(), basis = new THREE.Matrix4();
 function uprightOnWall(q) {
@@ -103,6 +97,17 @@ function uprightOnWall(q) {
 
 const work = document.createElement('canvas');
 const workCtx = work.getContext('2d', { willReadFrequently: true });
+const grayOf = (x, y, w, h) => toGray(workCtx.getImageData(x, y, w, h).data, w * h);
+const moved = (hit, dx, dy) => hit && { ...hit, quad: hit.quad.map(([x, y]) => [x + dx, y + dy]) };
+
+// The camera image is drawn behind the scene from the frame detect() measured. The live <video> runs ahead of a
+// slow frame loop, so a scene drawn over it swam against the wall whenever the phone moved. The video stays in the
+// page, covered by the canvas, because it is the image's source. Safari before 16.4 has no VideoFrame, so there the
+// scene is drawn over the live video as before.
+const snapshots = typeof VideoFrame === 'function';
+const cameraImage = new THREE.VideoFrameTexture();
+cameraImage.colorSpace = THREE.SRGBColorSpace;
+if (snapshots) scene.background = cameraImage;
 
 let videoW = 0, videoH = 0, frameW = 0, frameH = 0, focal = 0;
 let lastQuad = null;
@@ -114,7 +119,6 @@ const viewPos = new THREE.Vector3(), viewQuat = new THREE.Quaternion();
 const wall = createWallTracker();
 let lastHit = null;
 let lastSeen = -Infinity;
-let lastVideoTime = -1;
 let sceneAge = 0, wasSeen = false, goneAt = -Infinity, lostAt = null, awayAt = null;
 
 function resize(vw, vh) {
@@ -150,15 +154,21 @@ function jumped(quad) {
   return jump === null || jump > SNAP_DISTANCE * width;
 }
 
-// Returns false when the video has no new frame since the last call.
-function detect(now) {
-  if (video.currentTime === lastVideoTime) return false;
-  lastVideoTime = video.currentTime;
-  if (worldFromCamera) rotationAt(frameTime ?? performance.now(), frameRot);
-  workCtx.drawImage(video, 0, 0, frameW, frameH);
-  const gray = toGray(workCtx.getImageData(0, 0, frameW, frameH).data, frameW * frameH);
+function detectNear(prior) {
+  const q = prior.quad, cx = q.reduce((s, p) => s + p[0], 0) / 4, cy = q.reduce((s, p) => s + p[1], 0) / 4;
+  const half = Math.max(ROI_MIN, ROI_WIDTHS * Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1])) / 2;
+  const x0 = Math.max(0, Math.floor(cx - half)), y0 = Math.max(0, Math.floor(cy - half));
+  const w = Math.min(frameW, Math.ceil(cx + half)) - x0, h = Math.min(frameH, Math.ceil(cy + half)) - y0;
+  return moved(detectScreen(grayOf(x0, y0, w, h), w, h, moved(prior, -x0, -y0)), x0, y0);
+}
+
+// frameTime is when the camera frame was taken, to look up the gyro rotation it was seen with.
+function detect(now, image, frameTime) {
+  if (worldFromCamera) rotationAt(frameTime, frameRot);
+  workCtx.drawImage(image, 0, 0, frameW, frameH);
   const tracking = now - lastSeen < Math.min(hold(), TRACK_MS);
-  const hit = detectScreen(gray, frameW, frameH, tracking ? lastHit : null);
+  // A fast pan can leave the box, so a miss there still searches the whole frame.
+  const hit = (tracking && detectNear(lastHit)) || detectScreen(grayOf(0, 0, frameW, frameH), frameW, frameH, tracking ? lastHit : null);
   if (hit && !tracking) wall.reset();
   if (hit && wall.update(hit.quad, focal, frameW / 2, frameH / 2, targetPos, targetQuat)) {
     targetPos.applyQuaternion(frameRot);
@@ -177,7 +187,6 @@ function detect(now) {
   cameraFromWorld.copy(frameRot).invert();
   anchor.matrix.compose(viewPos.copy(pos).applyQuaternion(cameraFromWorld), viewQuat.copy(cameraFromWorld).multiply(quat), ONE);
   anchor.matrixWorldNeedsUpdate = true;
-  return true;
 }
 
 // Taps and hand grabs share one path: a point in normalized video coordinates. The 3D camera spans exactly the
@@ -241,44 +250,52 @@ let fakeHand;
 let lastFrame = null;
 const frameStats = { n: 0, total: 0 };
 
-function frame(now) {
-  requestAnimationFrame(frame);
-  if (video.readyState < 2 || !video.videoWidth) return;
+// Runs once per camera frame the browser presents. The detector and the background read one snapshot of it: during
+// a slow callback the video element itself moves on to newer frames. Chrome on Android stamps camera frames with
+// the sensor time and Safari with their arrival from the camera; a canvas stream in desktop Chrome has no capture time.
+function frame(now, { captureTime, presentationTime }) {
+  video.requestVideoFrameCallback(frame);
   const t0 = performance.now();
   if (video.videoWidth !== videoW || video.videoHeight !== videoH) resize(video.videoWidth, video.videoHeight);
-  // The anchor and the hand only change with a new camera frame, so drawing in between would cost GPU time
-  // (twice as much on a 60 Hz screen with a 30 fps camera) without showing anything new.
-  if (!detect(now)) return;
-  const dt = lastFrame === null ? 0 : Math.min((now - lastFrame) / 1000, 0.25);
-  lastFrame = now;
+  const image = snapshots ? new VideoFrame(video) : video;
+  let seen;
+  try {
+    detect(now, image, captureTime ?? presentationTime);
+    if (snapshots) cameraImage.setFrame(image);
+    const dt = lastFrame === null ? 0 : Math.min((now - lastFrame) / 1000, 0.25);
+    lastFrame = now;
 
-  const seen = now - lastSeen < hold();
-  if (!seen && wasSeen) goneAt = now;
-  if (seen && !wasSeen && now - goneAt > REPLAY_MS) sceneAge = 0;
-  if (seen) sceneAge += dt;
-  wasSeen = seen;
-  stage.visible = seen;
-  updateScene(now / 1000, dt, sceneAge);
-  scene.updateMatrixWorld();
+    seen = now - lastSeen < hold();
+    if (!seen && wasSeen) goneAt = now;
+    if (seen && !wasSeen && now - goneAt > REPLAY_MS) sceneAge = 0;
+    if (seen) sceneAge += dt;
+    wasSeen = seen;
+    stage.visible = seen;
+    updateScene(now / 1000, dt, sceneAge);
+    scene.updateMatrixWorld();
 
-  const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;
-  if (fakeHand?.grab) fakeHand = { ...fakeHand, grab: false };
-  const handUv = hand && [hand.x, hand.y];
-  const over = handUv ? entryAt(handUv) : null;
-  setGaze(handUv ? raycaster.ray : null);
-  setHover(over);
-  // A fist opens the object under the hand, and the next fist closes it again wherever the hand is.
-  if (hand?.grab) {
-    if (selectedEntry()) trigger(null);
-    else if (over) trigger(over);
+    const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;
+    if (fakeHand?.grab) fakeHand = { ...fakeHand, grab: false };
+    const handUv = hand && [hand.x, hand.y];
+    const over = handUv ? entryAt(handUv) : null;
+    setGaze(handUv ? raycaster.ray : null);
+    setHover(over);
+    // A fist opens the object under the hand, and the next fist closes it again wherever the hand is.
+    if (hand?.grab) {
+      if (selectedEntry()) trigger(null);
+      else if (over) trigger(over);
+    }
+    ui.setCursor(handUv, !!hand?.closed, !!over);
+
+    if (now - lastShadow >= SHADOW_MS) {
+      renderer.shadowMap.needsUpdate = true;
+      lastShadow = now;
+    }
+    renderer.render(scene, camera);
+  } finally {
+    // The render uploaded it, and an open frame holds one of the camera's few buffers even when a step threw.
+    if (snapshots) image.close();
   }
-  ui.setCursor(handUv, !!hand?.closed, !!over);
-
-  if (now - lastShadow >= SHADOW_MS) {
-    renderer.shadowMap.needsUpdate = true;
-    lastShadow = now;
-  }
-  renderer.render(scene, camera);
 
   ui.placeLabels(labels.map((l) => ({ uv: uvOf(l.marker), size: sizeOnScreen(l.marker.matrixWorld, l.width), show: l.show })), seen);
   const sel = selectedEntry();
@@ -372,6 +389,6 @@ $('go').addEventListener('click', async () => {
   $('start').hidden = true;
   $('hud').hidden = false;
   ui.showHint();
-  requestAnimationFrame(frame);
+  video.requestVideoFrameCallback(frame);
   startHands();
 });
