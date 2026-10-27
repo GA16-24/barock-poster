@@ -7,15 +7,15 @@ import { launch } from './browser.mjs';
 import { withGpu } from './gpu-lock.mjs';
 import { serve } from './serve.mjs';
 
-// A phone held still on the thermostat from 2 m, with hand tremor and a slow 5° pan, measured as the user sees it:
-// how far the drawn LCD center (a) and a point 0.15 m right and 0.1 m up of it (b) sit from where they belong in the
-// camera frame on screen at that moment. The camera is Chrome's fake capture device playing a rendered clip, so frames
-// keep coming at 30 fps while the app's main thread is busy, as on a phone; each frame carries its index as 12 blocks
-// along the bottom edge. --cpu 1,4 runs once per CDP CPU throttling rate, --hands loads the hand model (it is blocked
-// otherwise; the clip has no hand, but its inference costs loop time), --runs repeats each setting. Each run's raw
-// samples go to test/out/steady-*.json; passing such files instead re-analyzes them without a browser. A run fails
-// when (a) is off by more than MAX_P95 px at the 95th percentile or the screen shows a newer camera frame than the
-// one the anchor was measured in for most of the time.
+// A phone held still on the thermostat from 2 m, with hand tremor and a slow 5° pan, measured as the user sees it: how
+// far the drawn LCD center (a), a point 0.15 m right and 0.1 m up of it (b) and the top of the left panel (c) sit from
+// where they belong in the camera frame on screen at that moment. The camera is Chrome's fake capture device playing a
+// rendered clip, so frames keep coming at 30 fps while the app's main thread is busy, as on a phone; each frame carries
+// its index as 12 blocks along the bottom edge. --cpu 1,4 runs once per CDP CPU throttling rate, --hands loads the hand
+// model (it is blocked otherwise; the clip has no hand, but its inference costs loop time), --runs repeats each
+// setting. Each run's raw samples go to test/out/steady-*.json; passing such files instead re-analyzes them without a
+// browser. A run fails when (a) is off by more than MAX_P95 px at the 95th percentile or the screen shows a newer
+// camera frame than the one the anchor was measured in for most of the time.
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
   options: { cpu: { type: 'string', default: '1' }, hands: { type: 'boolean', default: false }, runs: { type: 'string', default: '1' } },
@@ -28,7 +28,7 @@ const W = 720, H = 1280, F = 960, FPS = 30, SECONDS = 12, DISTANCE = 2;
 const WINDOW = [3, 11.5];
 // 4 renders over 10 ms per frame blur the motion like a camera's exposure.
 const EXPOSURE = { ms: 10, samples: 4 };
-const POINTS = { a: [0, 0, 0], b: [0.15, 0.1, 0] };
+const POINTS = { a: [0, 0, 0], b: [0.15, 0.1, 0], c: [-1.12, 0.76, 0] };
 const MAX_P95 = 8;
 
 // Camera yaw (left positive) and pitch (up positive) in radians at clip time t.
@@ -228,12 +228,18 @@ function analyze({ t0, shown, renders }) {
       visible: r.visible, lag: i - r.i,
       a: dist(drawn(r.m, POINTS.a), truth(i, POINTS.a)), b: dist(drawn(r.m, POINTS.b), truth(i, POINTS.b)),
       aSync: dist(drawn(r.m, POINTS.a), truth(r.i, POINTS.a)), bSync: dist(drawn(r.m, POINTS.b), truth(r.i, POINTS.b)),
+      c: dist(drawn(r.m, POINTS.c), truth(i, POINTS.c)),
       offB: drawn(r.m, POINTS.b).map((v, j) => v - truth(i, POINTS.b)[j]),
+      offC: drawn(r.m, POINTS.c).map((v, j) => v - truth(i, POINTS.c)[j]),
     });
   }
   const seen = ticks.filter((t) => t.visible);
-  const shake = [];
-  for (let j = 1; j < ticks.length; j++) if (ticks[j].visible && ticks[j - 1].visible) shake.push(dist(ticks[j].offB, ticks[j - 1].offB));
+  const shake = [], shakeC = [];
+  for (let j = 1; j < ticks.length; j++) {
+    if (!ticks[j].visible || !ticks[j - 1].visible) continue;
+    shake.push(dist(ticks[j].offB, ticks[j - 1].offB));
+    shakeC.push(dist(ticks[j].offC, ticks[j - 1].offC));
+  }
   const gyro = inWindow.map((r) => F * new THREE.Quaternion(...r.q).angleTo(trueRotation(r.i)));
   const intervals = inWindow.slice(1).map((r, j) => r.end - inWindow[j].end);
   const handsAt = renders.find((r) => r.hands);
@@ -241,7 +247,7 @@ function analyze({ t0, shown, renders }) {
   const stamp = stats(inWindow.map((r) => r.frameTime - (captured.get(r.i) ?? t0 + (r.i * 1000) / FPS)));
   return {
     tracked: seen.length / Math.max(ticks.length, 1),
-    a: stats(seen.map((t) => t.a)), b: stats(seen.map((t) => t.b)),
+    a: stats(seen.map((t) => t.a)), b: stats(seen.map((t) => t.b)), c: stats(seen.map((t) => t.c)), shakeC: stats(shakeC),
     aSync: stats(seen.map((t) => t.aSync)), bSync: stats(seen.map((t) => t.bSync)),
     shake: stats(shake), lag: stats(seen.map((t) => t.lag)), gyro: stats(gyro),
     detect: stats(inWindow.map((r) => r.ms[0])), hands: stats(inWindow.map((r) => r.ms[1])), render: stats(inWindow.map((r) => r.ms[2])),
@@ -292,6 +298,7 @@ function report(name, data) {
   console.log(`${name} on ${data.gpu ?? 'an unrecorded GPU'}`);
   console.log(`  tracked ${(r.tracked * 100).toFixed(0)}% of the window${r.handsFrom === null ? '' : `, hands from ${r.handsFrom.toFixed(1)} s`}`);
   console.log(`  on screen: (a) ${triple(r.a)}  (b) ${triple(r.b)}  shake of (b) ${triple(r.shake)}`);
+  console.log(`  top of the left panel (c), off screen in this clip: ${triple(r.c)}  shake of (c) ${triple(r.shakeC)}`);
   console.log(`  against the frame the app processed: (a) ${triple(r.aSync)}  (b) ${triple(r.bSync)}  gyro rotation ${triple(r.gyro)}`);
   console.log(`  gyro looked up at the capture time ${f(r.stamp.med)} ms (median, p95 ${f(r.stamp.p95)}, max ${f(r.stamp.max)})`);
   console.log(`  shown minus processed frame ${triple(r.lag)}; overlay updates every ${triple(r.interval)} ms`);

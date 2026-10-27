@@ -68,6 +68,7 @@ Die Tests starten Chrome mit einer künstlichen Kamera, die ein Video aus den Te
 | `npm run test:detect` | Erkennung auf 15 Fotos mit und 8 Fotos ohne Thermostat |
 | `npm run test:pose` | Lageberechnung mit erfundenen Ecken, deren Ergebnis bekannt ist |
 | `npm run test:jitter` | wie stark die Szene bei wackelnder Kamera zittert |
+| `npm run test:shake` | wie stark die Ränder der Szene in einem echten Handyvideo zittern und ob die Glättung hinterherhinkt |
 | `npm run test:world` | ob die Szene beim Schwenken an ihrem Platz im Raum bleibt |
 | `npm run test:app` | die ganze Seite von Start bis "GEFUNDEN", mit Screenshots in `test/out` |
 | `npm run test:scene` | ein Raum aus 1,8 m Abstand: alle Modelle geladen und sichtbar, Karten nach Tippen und Greifen, Wechsel des Dichters |

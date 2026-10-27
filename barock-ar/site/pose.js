@@ -80,7 +80,7 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 // many frames.
 // Everything is in three.js axes (y up, -z forward). ray points at the LCD center from the camera. frame is the
 // basis of the virtual camera, rolled so that the LCD's x axis projects onto its x axis; the rotations are in it,
-// which makes their tilt independent of how the phone turns.
+// which makes their tilt independent of how the phone turns. roll is that turn of the frame about the ray, in radians.
 export function wallPose(quad, f, cx, cy) {
   const [a, b, c, d] = quad;
   const d1 = [c[0] - a[0], c[1] - a[1]], d2 = [d[0] - b[0], d[1] - b[1]];
@@ -139,6 +139,7 @@ export function wallPose(quad, f, cx, cy) {
   return {
     ray: fl(v),
     distance: 1 / k,
+    roll,
     frame: [fl(xv), scale(fl(yv), -1), scale(fl(v), -1)],
     rotations: rotations.map((r) => r.map(fl)),
     cue,

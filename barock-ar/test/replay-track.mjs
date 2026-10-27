@@ -22,7 +22,7 @@ for (let i = 0; i < n; i++) {
   if (last !== i - 1) tracker.reset();
   hits++;
   const h = normalOf(new THREE.Quaternion().setFromRotationMatrix(m.fromArray(poseFromQuad(hit.quad, f, W / 2, H / 2))));
-  tracker.update(hit.quad, f, W / 2, H / 2, pos, quat);
+  tracker.update(hit.quad, f, W / 2, H / 2, i / FPS, pos, quat);
   const t = normalOf(quat);
   if (last === i - 1) {
     turns.homography.push(h.angleTo(prior.h));
