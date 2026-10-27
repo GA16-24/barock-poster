@@ -1,6 +1,6 @@
-import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { launch } from './browser.mjs';
 import { withGpu } from './gpu-lock.mjs';
 import { serve } from './serve.mjs';
 
@@ -11,9 +11,6 @@ const root = new URL('..', import.meta.url).pathname;
 const photo = `${root}test/out/0442-small.jpg`;
 mkdirSync(`${root}test/out`, { recursive: true });
 execFileSync('ffmpeg', ['-nostdin', '-v', 'error', '-y', '-i', `${root}test/photos/0442.jpg`, '-vf', 'scale=1080:1440', photo]);
-// Software rendering of the full scene is too slow for the video to keep pace with the gyro, so on macOS the
-// test draws with the real GPU, which needs a visible window.
-const gpu = process.platform === 'darwin';
 
 const deg = Math.PI / 180;
 const yaw = (t) => (t < 2 ? 0 : t < 4 ? (t - 2) * 7.5 : t < 6 ? 15 + (t - 4) * 15 : t < 7 ? 45 : t < 9 ? 45 - (t - 7) * 22.5 : 0) * deg;
@@ -112,14 +109,8 @@ await withGpu(async () => {
   const { origin, close } = await serve(root);
   let browser;
   try {
-    browser = await chromium.launch({
-      channel: 'chrome',
-      headless: !gpu,
-      args: [
-        ...(gpu ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
-        '--autoplay-policy=no-user-gesture-required',
-      ],
-    });
+    // Software rendering of the full scene is too slow for the video to keep pace with the gyro.
+    browser = await launch(['--autoplay-policy=no-user-gesture-required']);
     console.log('gyro:');
     failures.push(...await run(browser, origin, true));
     console.log('no gyro:');

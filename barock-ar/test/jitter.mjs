@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { launch } from './browser.mjs';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 
@@ -17,10 +17,7 @@ execFileSync('ffmpeg', [
 
 const server = spawn('python3', ['-m', 'http.server', '8126', '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 800));
-const browser = await chromium.launch({
-  channel: 'chrome',
-  args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-video-capture=${y4m}`],
-});
+const browser = await launch(['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-video-capture=${y4m}`]);
 
 async function measure(rotationSmoothing, gyro) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
