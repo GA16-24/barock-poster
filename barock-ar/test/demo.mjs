@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util';
 import { withGpu } from './gpu-lock.mjs';
 
 // Plays a phone video into the app as its camera, in real time, and records what the screen shows.
-// The video has no motion data, so the scene only stays while the thermostat is in view.
+// The video has no motion data, so the scene only stays while the poster is in view.
 // --tap 6.5:birken taps the object with that id when the clip reaches 6.5 s, with a real pointer at its screen
 // position; --from and --to cut the clip first (tap times count from the cut). --watch krone,brot prints, every
 // half second, which of those objects are wholly on screen and how big, to choose tap times.
@@ -69,7 +69,6 @@ await withGpu(async () => {
       }, true);
     });
     await page.goto('http://localhost:8128/site/index.html');
-    await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 120000 });
 
     const cdp = await page.context().newCDPSession(page);
     const shots = [];
@@ -81,6 +80,7 @@ await withGpu(async () => {
     await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 90 });
     await page.waitForTimeout(1000);
     await page.click('#go');
+    await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 120000 });
     await page.evaluate((ids) => {
       globalThis.__watch = [];
       if (!ids.length) return;

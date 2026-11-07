@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data:">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eee5d1">
+<title>Drei räumliche Studien | Barock im Raum</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="upgrades.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/jsm/" } }</script>
+</head>
+<body>
+<div class="page-shell">
+  <header class="masthead">
+    <a class="wordmark" href="index.html" aria-label="Barock im Raum, Startseite">
+      <span>Barock</span>
+      <small>im Raum</small>
+    </a>
+    <p class="edition">Drei räumliche Studien</p>
+    <a class="back-link" href="index.html"><span aria-hidden="true">←</span> Zurück zur Anwendung</a>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">Vom Plakat in den Raum</p>
+        <h1 id="page-title">Der Barock, neu inszeniert.</h1>
+      </div>
+      <p class="intro-copy">Drei eigenständige Entwürfe für die nächste Ausbaustufe. Wählen Sie eine Studie und betrachten Sie sie aus jeder Richtung.</p>
+    </section>
+
+    <div class="comparison">
+      <aside class="variant-picker" aria-label="Variantenwahl">
+        <p class="picker-label">Wählen Sie eine Inszenierung</p>
+        <div class="variant-tabs" role="tablist" aria-label="Drei Vorschauvarianten">
+          <button class="variant-tab is-active" id="tab-theater" type="button" role="tab" aria-selected="true" aria-controls="preview" data-variant="theater">
+            <span class="variant-number">01</span>
+            <span class="variant-copy"><strong>Das lebendige Theater</strong><small>Museum wird Bühne</small></span>
+            <span class="tab-mark" aria-hidden="true"></span>
+          </button>
+          <button class="variant-tab" id="tab-worlds" type="button" role="tab" aria-selected="false" aria-controls="preview" data-variant="worlds" tabindex="-1">
+            <span class="variant-number">02</span>
+            <span class="variant-copy"><strong>Zwei Welten</strong><small>Adel und Volk im Gleichgewicht</small></span>
+            <span class="tab-mark" aria-hidden="true"></span>
+          </button>
+          <button class="variant-tab" id="tab-portal" type="button" role="tab" aria-selected="false" aria-controls="preview" data-variant="portal" tabindex="-1">
+            <span class="variant-number">03</span>
+            <span class="variant-copy"><strong>Das Zeitportal</strong><small>Eine Reise durch die Epoche</small></span>
+            <span class="tab-mark" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p class="picker-note">Die Studien verbinden vorhandene Modelle des Projekts mit neuen GLB-Modellen aus Kimi 3D Make.</p>
+      </aside>
+
+      <section class="preview" id="preview" role="tabpanel" aria-labelledby="tab-theater">
+        <div class="viewer" id="viewer">
+          <canvas id="stage" aria-label="Interaktive dreidimensionale Vorschau" tabindex="0"></canvas>
+          <div class="viewer-top">
+            <span class="scene-index" id="scene-index">Studie 01 / 03</span>
+            <span class="scene-status" id="scene-status" role="status">Szene wird vorbereitet</span>
+          </div>
+          <div class="viewer-caption" aria-live="polite">
+            <p class="scene-kicker" id="scene-kicker">Museum wird Bühne</p>
+            <h2 id="scene-title">Das lebendige Theater</h2>
+            <p id="scene-description">Rote Samtvorhänge, vergoldete Bühnenarchitektur und die drei Dichter verbinden die vertraute Sammlung zu einem lebendigen Tableau.</p>
+          </div>
+          <div class="drag-hint">
+            <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5.2 12.2a9.2 9.2 0 0 1 15.8-4.1M22.8 15.8A9.2 9.2 0 0 1 7 19.9"/><path d="m20.7 3.7.5 4.8-4.8.6M7.3 24.3l-.5-4.8 4.8-.6"/></svg>
+            <span>Ziehen zum Drehen</span>
+          </div>
+          <span class="viewer-corner corner-a" aria-hidden="true"></span>
+          <span class="viewer-corner corner-b" aria-hidden="true"></span>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <span>Eigenständige 3D-Vorschau</span>
+    <span>Noch nicht mit der Kamera verbunden</span>
+  </footer>
+</div>
+<noscript>Für die dreidimensionalen Vorschauen wird JavaScript benötigt.</noscript>
+<script type="module" src="upgrades.js"></script>
+</body>
+</html>

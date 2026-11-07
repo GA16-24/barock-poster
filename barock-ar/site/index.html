@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#16110b">
 <title>Barock im Raum</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/jsm/" } }</script>
 </head>
 <body>
@@ -16,7 +16,7 @@
 <canvas id="view"></canvas>
 <div id="labels" hidden></div>
 <div id="hud" hidden>
-  <p id="hint" hidden>Greif mit der Hand nach einem Gegenstand oder tipp ihn an.</p>
+  <p id="hint" hidden>Öffne deine Hand über einem Gegenstand und schließe sie dann zur Faust. Antippen geht auch.</p>
   <div id="cursor" hidden></div>
   <aside id="card">
     <button class="close" type="button" aria-label="Schließen">×</button>
@@ -27,19 +27,19 @@
     <p class="pair" hidden></p>
   </aside>
   <div id="bar">
-    <div id="status">SUCHE THERMOSTAT…</div>
+    <div id="status">SUCHE PLAKAT…</div>
     <div id="loading"></div>
   </div>
 </div>
 <main id="start">
   <p class="kicker">Ein Plakat zum Barock</p>
   <h1>Barock<br><span>im Raum</span></h1>
-  <p class="how">Richte die Kamera auf den Thermostat an der Wand. Dann erscheinen drei Dichter, der Adel und das Volk um ihn herum.</p>
+  <p class="how">Richte die Kamera auf das Plakat. Dann erscheinen drei Dichter, der Adel und das Volk im Raum.</p>
   <button id="go" type="button">Start</button>
   <a class="sources" href="credits.html">Quellen</a>
   <div class="load"><progress id="progress" max="1" value="0"></progress><span id="progress-text">Lade Modelle</span></div>
   <p id="error" role="alert" hidden></p>
 </main>
-<script type="module" src="main.js"></script>
+<script type="module" src="main.js?v=14"></script>
 </body>
 </html>

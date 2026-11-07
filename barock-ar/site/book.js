@@ -10,10 +10,17 @@ export function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
-  draw(c.getContext('2d'), w, h);
-  const t = new THREE.CanvasTexture(c);
+  const ctx = c.getContext('2d');
+  draw(ctx, w, h);
+  const { data } = ctx.getImageData(0, 0, w, h);
+  const t = new THREE.DataTexture(data, w, h);
+  t.flipY = true;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
+  t.needsUpdate = true;
   return t;
 }
 

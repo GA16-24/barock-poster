@@ -1,25 +1,24 @@
 {
   "name": "barock-ar",
   "version": "1.0.0",
-  "description": "AR: Baroque nobility, people and three poets around the EMMETI thermostat",
+  "description": "AR: Baroque nobility, people and three poets around the Barock poster",
   "scripts": {
     "vendor": "node tools/vendor.mjs",
+    "target": "npm run vendor && node tools/compile-poster.mjs",
     "test:detect": "node test/detect.mjs",
     "test:pose": "node test/pose.mjs",
     "test:app": "node test/app.mjs",
     "test:jitter": "node test/jitter.mjs",
-    "deploy": "npm run vendor && netlify deploy --prod --dir site",
+    "test:steady": "node test/steady.mjs",
+    "test:upgrades": "node test/upgrades.mjs",
+    "deploy": "npm run vendor && npx wrangler pages deploy site --project-name barock-im-raum --branch main",
     "test:world": "node test/world.mjs",
-    "test:video": "node test/replay-detect.mjs",
-    "template": "node test/make-template.mjs",
     "test:texts": "node test/readability.mjs",
     "test:grab": "node test/grab.mjs",
     "maps": "node tools/maps/build.mjs",
     "test:scene": "node test/scene.mjs",
     "test:assets": "node tools/assets/budget.mjs",
-    "demo": "node test/demo.mjs",
-    "test:track": "node test/replay-track.mjs",
-    "test:shake": "node test/shake.mjs"
+    "demo": "node test/demo.mjs"
   },
   "type": "module",
   "dependencies": {
@@ -28,6 +27,7 @@
     "@gltf-transform/functions": "^4.5.1",
     "@mediapipe/tasks-vision": "^1.1.1",
     "meshoptimizer": "^1.3.0",
+    "mind-ar": "1.2.5",
     "playwright": "^1.64.0",
     "sharp": "^0.35.5",
     "three": "^0.186.1"

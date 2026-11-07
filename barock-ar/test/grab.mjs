@@ -10,9 +10,9 @@ const out = `${root}test/out/hands`;
 mkdirSync(out, { recursive: true });
 
 const FPS = 30, W = 405, H = 720, FRAMES = 165;
-// Frame windows of the fake camera: empty wall, open hand at A, fist at A, open at A, move to B, open at B.
-const OPEN_FROM = 30, FIST_FROM = 60, OPEN_AGAIN = 90, MOVE_FROM = 120, MOVE_TO = 135;
-const A = { x: 0.3, y: 0.55 }, B = { x: 0.72, y: 0.62 };
+// Frame windows of the fake camera: empty wall, open hand at A, a short fist at A, open at A, move to B, open at B.
+const OPEN_FROM = 30, FIST_FROM = 60, OPEN_AGAIN = 70, MOVE_FROM = 120, MOVE_TO = 135;
+const A = { x: 0.5, y: 0.27 }, B = { x: 0.72, y: 0.62 };
 // Cutout scale and palm center (mean of wrist and the four knuckles) in cutout pixels, checked by eye on test/out/hands/cutouts.png.
 const OPEN = { scale: 0.6, palm: [195, 212] };
 const FIST = { scale: 0.26, palm: [48, 197] };
@@ -46,11 +46,11 @@ const barcode = Array.from({ length: 8 }, (_, b) => `drawbox=x=${b * 12}:y=0:w=1
 const y4m = `${out}/fake-camera.y4m`;
 execFileSync('ffmpeg', [
   '-nostdin', '-v', 'error', '-y',
-  '-loop', '1', '-t', `${FRAMES / FPS}`, '-i', `${root}test/photos/0442.jpg`,
+  '-loop', '1', '-t', `${FRAMES / FPS}`, '-i', `${root}site/img/poster.png`,
   '-loop', '1', '-t', `${FRAMES / FPS}`, '-i', `${out}/open-arm.png`,
   '-loop', '1', '-t', `${FRAMES / FPS}`, '-i', `${out}/fist-arm.png`,
   '-filter_complex', [
-    `[0:v]scale=-2:${H},crop=${W}:${H},fps=${FPS},setsar=1[bg]`,
+    `[0:v]scale=600:-1,pad=720:1280:60:420:color=0xc9b9a3,scale=${W}:${H},fps=${FPS},setsar=1[bg]`,
     `[1:v]scale=iw*${OPEN.scale}:-1[open]`,
     `[2:v]scale=iw*${FIST.scale}:-1[fist]`,
     `[bg][open]overlay=x='${at(OPEN, 'x', W)}':y='${at(OPEN, 'y', H)}':enable='between(n,${OPEN_FROM},${FIST_FROM - 1})+gte(n,${OPEN_AGAIN})'[a]`,
@@ -97,8 +97,8 @@ async function checkTracking(page, delegate) {
   const avg = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
   const median = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
   const inferences = log.map((e) => e.inferenceMs).filter((ms, i, all) => ms > 0 && ms !== all[i - 1]);
-  // A change shows up after the 100 ms debounce plus up to two samples, and hands.js samples at most every other
-  // frame, so windows skip that much after each change.
+  // Release shows up after the 100 ms debounce plus up to two samples, and hands.js samples at most every other
+  // frame. Use that allowance after either transition so the settled-state checks ignore the sampling boundary.
   const sample = Math.max(median(inferences), 2000 / FPS);
   const lag = Math.ceil(((100 + 2 * sample) / 1000) * FPS);
   console.log(`checks skip ${lag} frames after each change`);
@@ -112,8 +112,8 @@ async function checkTracking(page, delegate) {
     const settled = [...inWindow(OPEN_FROM + lag, MOVE_FROM), ...inWindow(MOVE_TO + lag, FRAMES)];
     const found = settled.filter((e) => e.hand).length / settled.length;
     check(found >= 0.9, `${tag} hand found in ${(found * 100).toFixed(0)}% of frames with a hand`);
-    // A log entry's frame label can trail the video by one frame, so the hand arriving at frame OPEN_FROM may be
-    // logged as OPEN_FROM - 1. A hand left over from the end of the loop would still sit at B, not A.
+    // A log entry's frame label can trail the video by one frame, so arrivals and immediate transitions can carry
+    // the previous frame number. A hand left over from the end of the loop would still sit at B, not A.
     const wall = inWindow(OPEN_FROM - 7, OPEN_FROM - 1);
     check(wall.every((e) => !e.hand), `${tag} hand dropped on the empty wall`);
     if (wall.some((e) => e.hand)) console.log(`  ${tag} empty wall: ${wall.map((e) => `${e.frame}:${e.hand ? `hand@${e.hand.x.toFixed(2)},${e.hand.y.toFixed(2)}` : '-'}`).join(' ')}`);
@@ -133,11 +133,11 @@ async function checkTracking(page, delegate) {
 
     const grabs = pass.filter((e) => e.hand?.grab), releases = pass.filter((e) => e.hand?.release);
     const latency = (es, from) => es.map((e) => ((e.frame - from) / FPS * 1000).toFixed(0));
-    check(grabs.length === 1 && grabs[0].frame >= FIST_FROM && grabs[0].frame < OPEN_AGAIN,
+    check(grabs.length === 1 && grabs[0].frame >= FIST_FROM - 1 && grabs[0].frame < OPEN_AGAIN,
       `${tag} one grab, at frame ${grabs.map((e) => e.frame)} (fist from ${FIST_FROM}, latency ${latency(grabs, FIST_FROM)} ms)`);
     check(releases.length === 1 && releases[0].frame >= OPEN_AGAIN && releases[0].frame < MOVE_FROM,
       `${tag} one release, at frame ${releases.map((e) => e.frame)} (open from ${OPEN_AGAIN}, latency ${latency(releases, OPEN_AGAIN)} ms)`);
-    const openClosed = [...inWindow(OPEN_FROM, FIST_FROM), ...inWindow(MOVE_FROM, FRAMES)].filter((e) => e.hand?.closed);
+    const openClosed = [...inWindow(OPEN_FROM, FIST_FROM - 1), ...inWindow(MOVE_FROM, FRAMES)].filter((e) => e.hand?.closed);
     check(openClosed.length === 0, `${tag} never closed while the hand is open (${openClosed.length} frames)`);
     const fistOpen = inWindow(FIST_FROM + lag, OPEN_AGAIN).filter((e) => e.hand && !e.hand.closed);
     check(fistOpen.length === 0, `${tag} stays closed through the fist (${fistOpen.length} open frames)`);
@@ -173,6 +173,61 @@ async function test(origin, browser) {
   if (process.env.HANDS_NO_WEBGL) check(delegate === null, 'without WebGL createHands returns null');
   else await checkTracking(page, delegate);
   check(foreign.length === 0, `no requests to foreign servers${foreign.length ? `: ${[...new Set(foreign)].join(', ')}` : ''}`);
+  await page.close();
+}
+
+async function testApp(origin, browser) {
+  const page = await browser.newPage({ viewport: { width: W, height: H } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => ['error', 'warning'].includes(m.type()) && console.log(`full app ${m.type()}: ${m.text()}`));
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 8 });
+  await page.route(/\/site\/main\.js(?:\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const source = await response.text();
+    const logged = source.replace('    if (hand?.grab) {', `    if (hand?.grab) (globalThis.__grabs ??= []).push({ videoTime: video.currentTime, stageVisible: stage.visible, over: over?.id ?? null, selected: selectedEntry()?.id ?? null });\n    if (hand?.grab) {`);
+    if (source === logged) throw new Error('Grab instrumentation anchor missing');
+    const lossLogged = logged.replace('    stage.visible = seen;', `    stage.visible = seen;\n    if (globalThis.__posterLost) (globalThis.__lossFrames ??= []).push({ now: renderNow, lastSeen, visible: seen });`);
+    if (logged === lossLogged) throw new Error('Loss-frame instrumentation anchor missing');
+    const instrumented = lossLogged.replace('    const fresh = await detect(image);', '    const fresh = !globalThis.__posterLost && await detect(image);');
+    if (lossLogged === instrumented) throw new Error('Poster-loss instrumentation anchor missing');
+    await route.fulfill({ response, body: instrumented });
+  });
+  await page.route(/\/site\/hands\.js(?:\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const source = await response.text();
+    const instrumented = source.replace('    const edge = settle(m, now);', `    (globalThis.__handSamples ??= []).push({ videoTime: video.currentTime, fist: m.fist, pinch: m.pinch });\n    const edge = settle(m, now);`);
+    if (source === instrumented) throw new Error('Hand-sample instrumentation anchor missing');
+    await route.fulfill({ response, body: instrumented });
+  });
+  await page.goto(`${origin}/site/index.html`);
+  await page.click('#go');
+  await page.waitForFunction(() => document.getElementById('status').textContent === 'GEFUNDEN', null, { timeout: 30000 });
+  await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 60000 });
+  await page.waitForFunction(() => globalThis.__grabs?.length >= 3, null, { timeout: 25000 }).catch(() => {});
+  const { grabs, samples } = await page.evaluate(() => ({ grabs: globalThis.__grabs ?? [], samples: globalThis.__handSamples ?? [] }));
+  const loopOf = (e) => Math.floor(e.videoTime / (FRAMES / FPS));
+  const loops = grabs.map(loopOf);
+  console.log(`full app at 8x CPU: ${JSON.stringify(grabs)}, ${samples.length} hand samples, ${samples.filter((s) => s.fist < 0.6).length} close`);
+  console.log('hand sample range', samples[0], samples.at(-1));
+  check(grabs.length === 3, `full app delivers three grabs (got ${grabs.length})`);
+  check(new Set(loops).size === 3 && loops[2] - loops[0] === 2, `grabs arrive in three consecutive camera loops (${loops.join(', ')})`);
+  // The fake camera clock runs about 200 ms ahead of its content under CPU 8. Keep a small allowance around the fist.
+  const frameOf = (g) => (g.videoTime % (FRAMES / FPS)) * FPS;
+  check(grabs.every((g) => frameOf(g) >= FIST_FROM - 9 && frameOf(g) < OPEN_AGAIN + 6), 'every full-app grab lands inside its fist window');
+  check(loops.every((loop) => samples.some((s) => loopOf(s) === loop && s.fist < 0.6)), 'each grab loop also contains a raw close inference');
+  check(grabs.every((g) => g.stageVisible), 'full app keeps the scene visible for every grab');
+  check(grabs.every((g) => g.over === 'bidermann'), 'full app raycasts Bidermann for every grab');
+  check(grabs.map((g) => g.selected).join(',') === ',bidermann,', 'full app selects, closes, and selects again across three fists');
+  await page.screenshot({ path: `${out}/full-app.png` });
+  await page.evaluate(() => { globalThis.__posterLost = true; });
+  await page.waitForFunction(() => globalThis.__lossFrames?.some((f) => !f.visible), null, { timeout: 5000 }).catch(() => {});
+  const hidden = await page.evaluate(() => globalThis.__lossFrames?.find((f) => !f.visible));
+  const holdMs = hidden ? hidden.now - hidden.lastSeen : Infinity;
+  check(holdMs >= 500 && holdMs < 1500, `without gyro the first hidden frame follows the 500 ms poster hold (${holdMs.toFixed(0)} ms)`);
+  check(errors.length === 0, `full app has no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+  await page.close();
 }
 
 await withGpu(async () => {
@@ -187,6 +242,7 @@ await withGpu(async () => {
       ...(process.env.HANDS_NO_WEBGL ? ['--disable-gpu', '--disable-software-rasterizer'] : []),
     ]);
     await test(origin, browser);
+    if (!process.env.HANDS_NO_WEBGL) await testApp(origin, browser);
   } catch (e) {
     failures.push(e.message);
     console.log(`FAIL: ${e.message}`);

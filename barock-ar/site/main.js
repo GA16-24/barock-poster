@@ -1,25 +1,19 @@
 import * as THREE from 'three';
-import { toGray, detectScreen } from './detect.js';
-import { createWallTracker } from './track.js';
-import { stage, entries, labels, initStage, loadScene, updateScene, pick, select, setHover, setGaze, selectedEntry } from './scene.js';
+import { createPosterTracker } from './poster.js?v=6';
+import { stage, entries, labels, initStage, loadScene, updateScene, pick, select, setHover, setGaze, selectedEntry } from './scene.js?v=3';
 import { loadInfo, infoFor } from './info.js';
 import * as ui from './ui.js';
 
-// At 1 to 2 m the LCD is only about 35 px wide even at 1280.
 const DETECT_LONG_SIDE = 1280;
 const FOCAL_PER_LONG_SIDE = 0.75;
-// Smoothing runs in the gyro's world frame, where the wall never moves, so heavy rotation smoothing adds no lag when the phone turns.
-// Without the gyro it would run in camera space and trail every turn, and the wall tracker has smoothed the tilt already.
+// Smoothing runs in the gyro's world frame, where the poster never moves, so rotation smoothing adds no lag when the phone turns.
+// Without the gyro, continuing hits use their fresh camera-space rotation directly.
 const ROTATION_SMOOTHING = 0.2;
-const SNAP_DISTANCE = 0.3;
-// While tracking, a box this many LCD widths wide around the last hit is searched first, a small part of the frame.
-const ROI_WIDTHS = 8, ROI_MIN = 240;
-// With the gyro the scene stays fixed in the room while the user pans across its 2.3 m; without it a held pose
-// would be glued to the screen. The detector only treats the last hit as a live track for TRACK_MS, so a stale
-// hit from long ago cannot lower the bar for a look-alike (the card reader) somewhere else.
-const HOLD_MS = { gyro: 30000, none: 100 };
-const TRACK_MS = 500;
-// The entrance clock only runs while the scene shows, so losing the thermostat mid-entrance pauses it. Only a find
+const POSITION_SMOOTHING = 0.2;
+const DISTANCE_SMOOTHING = 0.2;
+// With the gyro the scene stays fixed in the room while the user pans; without it a held pose would be glued to the screen.
+const HOLD_MS = { gyro: 30000, none: 500 };
+// The entrance clock only runs while the scene shows, so losing the poster mid-entrance pauses it. Only a find
 // more than REPLAY_MS after the loss starts it over.
 const REPLAY_MS = 5000;
 // A selection, with its threads and turned heads, ends once its object has been wholly off screen, or the scene lost,
@@ -85,7 +79,7 @@ function rotationAt(t, out) {
   return out.slerpQuaternions(a.q, b.q, (t - a.t) / (b.t - a.t));
 }
 
-// The thermostat hangs level on a vertical wall, so only its heading comes from the noisy quad.
+// The poster hangs level on a vertical wall, so only its heading comes from the estimated normal.
 const normal = new THREE.Vector3(), right = new THREE.Vector3(), basis = new THREE.Matrix4();
 function uprightOnWall(q) {
   normal.copy(Z).applyQuaternion(q).setY(0);
@@ -96,31 +90,37 @@ function uprightOnWall(q) {
 
 const work = document.createElement('canvas');
 const workCtx = work.getContext('2d', { willReadFrequently: true });
-const grayOf = (x, y, w, h) => toGray(workCtx.getImageData(x, y, w, h).data, w * h);
-const moved = (hit, dx, dy) => hit && { ...hit, quad: hit.quad.map(([x, y]) => [x + dx, y + dy]) };
 
 // The camera image is drawn behind the scene from the frame detect() measured. The live <video> runs ahead of a
 // slow frame loop, so a scene drawn over it swam against the wall whenever the phone moved. The video stays in the
-// page, covered by the canvas, because it is the image's source. Safari before 16.4 has no VideoFrame, so there the
-// scene is drawn over the live video as before.
-const snapshots = typeof VideoFrame === 'function';
+// page, covered by the canvas, because it is the image's source. iPhones and browsers without usable video-backed
+// frames draw the scene over the live video instead.
+const directVideo = /iP(?:hone|ad|od)/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let snapshots = !directVideo && typeof VideoFrame === 'function';
 const cameraImage = new THREE.VideoFrameTexture();
 cameraImage.colorSpace = THREE.SRGBColorSpace;
 if (snapshots) scene.background = cameraImage;
+function disableSnapshots(error) {
+  snapshots = false;
+  scene.background = null;
+  console.warn(`Videoframes nicht verfügbar, Kamerabild wird direkt verwendet: ${error.message}`);
+}
 
 let videoW = 0, videoH = 0, frameW = 0, frameH = 0, focal = 0;
-let lastQuad = null;
+let poster = null, hasAnchor = false;
 const targetPos = new THREE.Vector3(), targetQuat = new THREE.Quaternion();
 // pos and quat are the smoothed anchor in the world frame; frameRot is the camera rotation when the shown video frame was captured.
 const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1);
 const frameRot = new THREE.Quaternion(), cameraFromWorld = new THREE.Quaternion();
 const viewPos = new THREE.Vector3(), viewQuat = new THREE.Quaternion();
-const wall = createWallTracker();
-let lastHit = null;
 let lastSeen = -Infinity;
 let sceneAge = 0, wasSeen = false, goneAt = -Infinity, lostAt = null, awayAt = null;
 
-function resize(vw, vh) {
+async function resize(vw, vh) {
+  poster?.dispose();
+  poster = null;
+  hasAnchor = false;
   videoW = vw;
   videoH = vh;
   const k = Math.min(1, DETECT_LONG_SIDE / Math.max(vw, vh));
@@ -134,7 +134,11 @@ function resize(vw, vh) {
   camera.updateProjectionMatrix();
   ui.setVideoSize(vw, vh);
   fitCanvas();
-  lastQuad = null;
+  const onError = (error) => {
+    trackingError = 'ERKENNUNG FEHLER · SEITE NEU LADEN';
+    console.error('Bilderkennung:', error);
+  };
+  poster = await createPosterTracker({ inputWidth: frameW, inputHeight: frameH, focal, onError });
 }
 
 // The canvas has the video's aspect and is cropped by object-fit: cover like the video, so it is sized to the
@@ -146,43 +150,34 @@ function fitCanvas() {
 }
 addEventListener('resize', fitCanvas);
 
-function jumped(quad) {
-  const width = Math.hypot(quad[1][0] - quad[0][0], quad[1][1] - quad[0][1]);
-  const jump = lastQuad && quad.reduce((s, p, i) => s + Math.hypot(p[0] - lastQuad[i][0], p[1] - lastQuad[i][1]), 0) / 4;
-  lastQuad = quad;
-  return jump === null || jump > SNAP_DISTANCE * width;
-}
-
-function detectNear(prior) {
-  const q = prior.quad, cx = q.reduce((s, p) => s + p[0], 0) / 4, cy = q.reduce((s, p) => s + p[1], 0) / 4;
-  const half = Math.max(ROI_MIN, ROI_WIDTHS * Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1])) / 2;
-  const x0 = Math.max(0, Math.floor(cx - half)), y0 = Math.max(0, Math.floor(cy - half));
-  const w = Math.min(frameW, Math.ceil(cx + half)) - x0, h = Math.min(frameH, Math.ceil(cy + half)) - y0;
-  return moved(detectScreen(grayOf(x0, y0, w, h), w, h, moved(prior, -x0, -y0)), x0, y0);
-}
-
-// frameTime is when the camera frame was taken, to look up the gyro rotation it was seen with.
-function detect(now, image, frameTime) {
-  if (worldFromCamera) rotationAt(frameTime, frameRot);
+async function detect(image) {
   workCtx.drawImage(image, 0, 0, frameW, frameH);
-  const tracking = now - lastSeen < Math.min(hold(), TRACK_MS);
-  // A fast pan can leave the box, so a miss there still searches the whole frame.
-  const hit = (tracking && detectNear(lastHit)) || detectScreen(grayOf(0, 0, frameW, frameH), frameW, frameH, tracking ? lastHit : null);
-  if (hit && !tracking) wall.reset();
-  if (hit && wall.update(hit.quad, focal, frameW / 2, frameH / 2, now / 1000, targetPos, targetQuat)) {
+  const hit = await poster.update(work);
+  if (hit) {
+    trackingError = '';
+    hit.matrix.decompose(targetPos, targetQuat, ONE);
     targetPos.applyQuaternion(frameRot);
     targetQuat.premultiply(frameRot);
     if (worldFromCamera) uprightOnWall(targetQuat);
-    // The wall tracker smooths the distance; the direction to the LCD is exact and stays unsmoothed.
-    pos.copy(targetPos);
-    if (jumped(hit.quad) || !tracking) quat.copy(targetQuat);
-    else quat.slerp(targetQuat, worldFromCamera ? ROTATION_SMOOTHING : 1);
-    lastSeen = now;
-    lastHit = hit;
+    const restart = !hasAnchor || (hit.acquired && performance.now() - lastSeen >= hold());
+    hasAnchor = true;
+    if (restart) {
+      pos.copy(targetPos);
+      quat.copy(targetQuat);
+    } else {
+      if (worldFromCamera) pos.lerp(targetPos, POSITION_SMOOTHING);
+      else {
+        const distance = THREE.MathUtils.lerp(pos.length(), targetPos.length(), DISTANCE_SMOOTHING);
+        pos.copy(targetPos).setLength(distance);
+        quat.slerp(targetQuat, 1);
+      }
+    }
+    lastSeen = performance.now();
   }
   cameraFromWorld.copy(frameRot).invert();
   anchor.matrix.compose(viewPos.copy(pos).applyQuaternion(cameraFromWorld), viewQuat.copy(cameraFromWorld).multiply(quat), ONE);
   anchor.matrixWorldNeedsUpdate = true;
+  return !!hit;
 }
 
 // Taps and hand grabs share one path: a point in normalized video coordinates. The 3D camera spans exactly the
@@ -243,34 +238,49 @@ function sizeOnScreen(matrixWorld, meters) {
 
 let hands = null;
 let fakeHand;
-let lastFrame = null;
+let lastFrame = null, lastFrameTiming = null;
 const frameStats = { n: 0, total: 0 };
 
-// Runs once per camera frame the browser presents. The detector and the background read one snapshot of it: during
+function queueFrame() {
+  if (!directVideo && video.requestVideoFrameCallback) video.requestVideoFrameCallback(frame);
+  else requestAnimationFrame((now) => frame(now, { presentationTime: now }));
+}
+
+// Runs once per camera frame the browser presents. The tracker and the background read one snapshot of it: during
 // a slow callback the video element itself moves on to newer frames. Chrome on Android stamps camera frames with
 // the sensor time and Safari with their arrival from the camera; a canvas stream in desktop Chrome has no capture time.
-function frame(now, { captureTime, presentationTime }) {
-  video.requestVideoFrameCallback(frame);
+async function frame(_, { captureTime, presentationTime }) {
   const t0 = performance.now();
-  if (video.videoWidth !== videoW || video.videoHeight !== videoH) resize(video.videoWidth, video.videoHeight);
-  const image = snapshots ? new VideoFrame(video) : video;
-  let seen;
+  const frameTime = captureTime ?? presentationTime;
+  if (worldFromCamera) rotationAt(frameTime, frameRot);
+  let image = video, seen;
   try {
-    detect(now, image, captureTime ?? presentationTime);
+    if (snapshots) {
+      try {
+        image = new VideoFrame(video);
+      } catch (error) {
+        disableSnapshots(error);
+      }
+    }
+    lastFrameTiming = { captureTime, presentationTime, frameTime, videoTimestamp: image === video ? null : image.timestamp, now: t0 };
+    if (video.videoWidth !== videoW || video.videoHeight !== videoH) await resize(video.videoWidth, video.videoHeight);
+    const fresh = await detect(image);
+    if (fresh) startContent();
+    const renderNow = performance.now();
     if (snapshots) cameraImage.setFrame(image);
-    const dt = lastFrame === null ? 0 : Math.min((now - lastFrame) / 1000, 0.25);
-    lastFrame = now;
+    const dt = lastFrame === null ? 0 : Math.min((renderNow - lastFrame) / 1000, 0.25);
+    lastFrame = renderNow;
 
-    seen = now - lastSeen < hold();
-    if (!seen && wasSeen) goneAt = now;
-    if (seen && !wasSeen && now - goneAt > REPLAY_MS) sceneAge = 0;
+    seen = fresh || renderNow - lastSeen < hold();
+    if (!seen && wasSeen) goneAt = renderNow;
+    if (seen && !wasSeen && renderNow - goneAt > REPLAY_MS) sceneAge = 0;
     if (seen) sceneAge += dt;
     wasSeen = seen;
     stage.visible = seen;
-    updateScene(now / 1000, dt, sceneAge);
+    updateScene(renderNow / 1000, dt, sceneAge);
     scene.updateMatrixWorld();
 
-    const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;
+    const hand = fakeHand !== undefined ? fakeHand : hands?.update(renderNow) ?? null;
     if (fakeHand?.grab) fakeHand = { ...fakeHand, grab: false };
     const handUv = hand && [hand.x, hand.y];
     const over = handUv ? entryAt(handUv) : null;
@@ -283,31 +293,40 @@ function frame(now, { captureTime, presentationTime }) {
     }
     ui.setCursor(handUv, !!hand?.closed, !!over);
 
-    if (now - lastShadow >= SHADOW_MS) {
+    if (renderNow - lastShadow >= SHADOW_MS) {
       renderer.shadowMap.needsUpdate = true;
-      lastShadow = now;
+      lastShadow = renderNow;
     }
     renderer.render(scene, camera);
+
+    ui.placeLabels(labels.map((l) => ({ uv: uvOf(l.marker), size: sizeOnScreen(l.marker.matrixWorld, l.width), show: l.show })), seen);
+    const sel = selectedEntry();
+    if (sel) {
+      const rect = seen ? screenRect(sel) : null, uv = uvOf(sel.holder);
+      lostAt = rect ? null : lostAt ?? renderNow;
+      awayAt = seen && uv && ui.onScreen(uv) ? null : awayAt ?? renderNow;
+      if (lostAt !== null && renderNow - lostAt > SELECTION_GRACE_MS) trigger(null);
+      else {
+        const avoid = [rect, ...entries.filter((e) => e.role).map(screenRect)].filter(Boolean);
+        ui.placeCard(uv ?? [0.5, 0.5], avoid, awayAt !== null && renderNow - awayAt > CARD_GRACE_MS);
+      }
+    }
+    const searching = renderNow - Math.max(startedAt, lastSeen) > 5000;
+    if (!contentStarted) $('loading').textContent = `Kamera ${frameStats.n + 1}`;
+    ui.setStatus(seen, trackingError || (searching ? 'PLAKAT SUCHEN' : ''));
+    frameStats.n++;
+    frameStats.total += performance.now() - t0;
+  } catch (error) {
+    if (snapshots) disableSnapshots(error);
+    else {
+      trackingError = 'KAMERABILD FEHLER · SEITE NEU LADEN';
+      console.error('Kamerabild:', error);
+    }
   } finally {
     // The render uploaded it, and an open frame holds one of the camera's few buffers even when a step threw.
-    if (snapshots) image.close();
+    if (image !== video) image.close();
+    queueFrame();
   }
-
-  ui.placeLabels(labels.map((l) => ({ uv: uvOf(l.marker), size: sizeOnScreen(l.marker.matrixWorld, l.width), show: l.show })), seen);
-  const sel = selectedEntry();
-  if (sel) {
-    const rect = seen ? screenRect(sel) : null, uv = uvOf(sel.holder);
-    lostAt = rect ? null : lostAt ?? now;
-    awayAt = seen && uv && ui.onScreen(uv) ? null : awayAt ?? now;
-    if (lostAt !== null && now - lostAt > SELECTION_GRACE_MS) trigger(null);
-    else {
-      const avoid = [rect, ...entries.filter((e) => e.role).map(screenRect)].filter(Boolean);
-      ui.placeCard(uv ?? [0.5, 0.5], avoid, awayAt !== null && now - awayAt > CARD_GRACE_MS);
-    }
-  }
-  ui.setStatus(seen);
-  frameStats.n++;
-  frameStats.total += performance.now() - t0;
 }
 
 addEventListener('pointerdown', (ev) => {
@@ -322,6 +341,7 @@ ui.initLabels(labels, (id) => trigger(entries.find((e) => e.id === id)));
 globalThis.__ar = {
   setHand: (h) => { fakeHand = h; },
   frameMs: () => frameStats.total / Math.max(frameStats.n, 1),
+  timing: () => lastFrameTiming,
   selected: () => selectedEntry()?.id ?? null,
   objects: () => entries.map((e) => {
     const [u, v] = uvOf(e.holder) ?? [NaN, NaN];
@@ -331,7 +351,7 @@ globalThis.__ar = {
 };
 
 loadInfo();
-loadScene(ui.setProgress);
+let startedAt = Infinity, trackingError = '';
 
 function explain(e) {
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) return 'Die Kamera braucht eine sichere Seite. Öffne sie über https.';
@@ -341,7 +361,7 @@ function explain(e) {
 }
 
 // On software WebGL (SwiftShader, llvmpipe) one hand inference takes about 200 ms, which halves the frame rate and
-// breaks the thermostat tracking, so those devices get taps only.
+// breaks the poster tracking, so those devices get taps only.
 function softwareGL() {
   const gl = renderer.getContext();
   const info = gl.getExtension('WEBGL_debug_renderer_info');
@@ -349,16 +369,29 @@ function softwareGL() {
 }
 
 async function startHands() {
+  ui.setHint('Handerkennung lädt … Du kannst Gegenstände schon antippen.');
   if (softwareGL()) {
     console.warn('Handerkennung aus: kein Grafikchip, Tippen geht trotzdem.');
+    ui.setHint('Tippe einen Gegenstand an, um mehr zu erfahren.');
     return;
   }
   try {
     const { createHands } = await import('./hands.js');
     hands = await createHands(video);
+    ui.setHint(hands
+      ? 'Öffne deine Hand über einem Gegenstand und schließe sie dann zur Faust.'
+      : 'Handerkennung ist nicht verfügbar. Tippe Gegenstände an.');
   } catch (e) {
     console.warn(`Handerkennung nicht verfügbar, Tippen geht trotzdem: ${e.message}`);
+    ui.setHint('Handerkennung ist nicht verfügbar. Tippe Gegenstände an.');
   }
+}
+
+let contentStarted = false;
+function startContent() {
+  if (contentStarted) return;
+  contentStarted = true;
+  loadScene(ui.setProgress).then(startHands);
 }
 
 $('go').addEventListener('click', async () => {
@@ -375,6 +408,7 @@ $('go').addEventListener('click', async () => {
       audio: false,
     });
     await video.play();
+    await resize(video.videoWidth, video.videoHeight);
     await motion;
   } catch (e) {
     error.textContent = explain(e);
@@ -384,7 +418,7 @@ $('go').addEventListener('click', async () => {
   }
   $('start').hidden = true;
   $('hud').hidden = false;
+  startedAt = performance.now();
   ui.showHint();
-  video.requestVideoFrameCallback(frame);
-  startHands();
+  queueFrame();
 });

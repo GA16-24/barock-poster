@@ -6,12 +6,11 @@ const root = new URL('..', import.meta.url).pathname;
 const out = `${root}test/out`;
 mkdirSync(out, { recursive: true });
 
-// A held-still phone: one photo, shaken by a few source pixels per frame (about 1 px in the detection frame).
-// The crop has the frame's 9:16 shape, so the LCD keeps its proportions as a camera would see them.
+// A held-still phone: the poster shifts by a few source pixels per frame.
 const y4m = `${out}/shake.y4m`;
 execFileSync('ffmpeg', [
-  '-nostdin', '-v', 'error', '-y', '-loop', '1', '-t', '4', '-i', `${root}test/photos/0442.jpg`,
-  '-vf', "crop=3150:5600:x='475+12*random(1)':y='60+12*random(2)',scale=405:720,fps=15,setsar=1,format=yuv420p",
+  '-nostdin', '-v', 'error', '-y', '-loop', '1', '-t', '4', '-i', `${root}site/img/poster.png`,
+  '-vf', "scale=600:-1,pad=740:1300:70:430:color=0xc9b9a3,crop=720:1280:x='10+8*random(1)':y='10+8*random(2)',scale=405:720,fps=15,setsar=1,format=yuv420p",
   y4m,
 ]);
 
@@ -24,7 +23,7 @@ async function measure(rotationSmoothing, gyro) {
   // A phone held upright and still, as iOS reports it.
   if (gyro) await page.addInitScript(() => setInterval(() => dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta: 90, gamma: 0 })), 16));
   if (rotationSmoothing !== undefined) {
-    await page.route('**/site/main.js', async (route) => {
+    await page.route(/\/site\/main\.js(?:\?.*)?$/, async (route) => {
       const body = (await (await route.fetch()).text()).replace(/ROTATION_SMOOTHING = [\d.]+/, `ROTATION_SMOOTHING = ${rotationSmoothing}`);
       await route.fulfill({ body, contentType: 'text/javascript' });
     });

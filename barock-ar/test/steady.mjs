@@ -1,42 +1,44 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import * as THREE from 'three';
 import { launch } from './browser.mjs';
 import { withGpu } from './gpu-lock.mjs';
 import { serve } from './serve.mjs';
+import { POSTER_WIDTH_M } from '../site/poster.js';
 
-// A phone held still on the thermostat from 2 m, with hand tremor and a slow 5° pan, measured as the user sees it: how
-// far the drawn LCD center (a), a point 0.15 m right and 0.1 m up of it (b) and the top of the left panel (c) sit from
-// where they belong in the camera frame on screen at that moment. The camera is Chrome's fake capture device playing a
-// rendered clip, so frames keep coming at 30 fps while the app's main thread is busy, as on a phone; each frame carries
-// its index as 12 blocks along the bottom edge. --cpu 1,4 runs once per CDP CPU throttling rate, --hands loads the hand
-// model (it is blocked otherwise; the clip has no hand, but its inference costs loop time), --runs repeats each
-// setting. Each run's raw samples go to test/out/steady-*.json; passing such files instead re-analyzes them without a
-// browser. A run fails when (a) is off by more than MAX_P95 px at the 95th percentile or the screen shows a newer
-// camera frame than the one the anchor was measured in for most of the time.
+// A still phone two metres from the configured poster, with hand tremor and a slow 5 degree pan. Chrome's fake capture device
+// keeps the 30 fps clip running while the app is busy. Each frame carries its index in 12 blocks along the bottom.
+// --cpu 1,4 selects CDP throttling rates, --hands allows the hand model to load, and --runs repeats each setting.
+// Raw captures go to test/out/steady-a1-*.json. Passing those files reanalyzes them without launching a browser.
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
-  options: { cpu: { type: 'string', default: '1' }, hands: { type: 'boolean', default: false }, runs: { type: 'string', default: '1' } },
+  options: { cpu: { type: 'string', default: '1' }, hands: { type: 'boolean', default: false }, runs: { type: 'string', default: '1' }, 'no-gyro': { type: 'boolean', default: false } },
 });
 const root = new URL('..', import.meta.url).pathname;
 const out = `${root}test/out`;
 mkdirSync(out, { recursive: true });
 
 const W = 720, H = 1280, F = 960, FPS = 30, SECONDS = 12, DISTANCE = 2;
+const POSTER_WIDTH = POSTER_WIDTH_M, POSTER_HEIGHT = POSTER_WIDTH * 1365 / 2048;
 const WINDOW = [3, 11.5];
-// 4 renders over 10 ms per frame blur the motion like a camera's exposure.
 const EXPOSURE = { ms: 10, samples: 4 };
-const POINTS = { a: [0, 0, 0], b: [0.15, 0.1, 0], c: [-1.12, 0.76, 0] };
-const MAX_P95 = 8;
+const POINTS = { center: [0, 0, 0], offCenter: [0.28, 0.18, 0] };
+const LIMITS = { position: 8, rotation: 1, visible: 0.99, reacquisitionPosition: 12, reacquisitionRotation: 2 };
+const SCHEMA = 1;
+const cpus = opts.cpu.split(',').map(Number);
+const runs = Number(opts.runs);
+if (!cpus.length || cpus.some((x) => !Number.isFinite(x) || x < 1)) throw new Error('--cpu needs comma-separated rates of at least 1');
+if (!Number.isInteger(runs) || runs < 1) throw new Error('--runs needs a positive integer');
 
-// Camera yaw (left positive) and pitch (up positive) in radians at clip time t.
+// Camera yaw and pitch in radians at clip time t. The pan starts after five seconds and lasts four seconds.
 function pose(t) {
   const deg = Math.PI / 180;
   const wave = (parts) => parts.reduce((s, [amp, hz, phase]) => s + amp * Math.sin(2 * Math.PI * hz * t + phase), 0);
   const pan = Math.min(1, Math.max(0, (t - 5) / 4));
-  return [(wave([[0.6, 2.3, 0], [0.35, 4.7, 1.3], [0.15, 8.6, 2.1]]) + 5 * (pan * pan * (3 - 2 * pan))) * deg,
+  return [(wave([[0.6, 2.3, 0], [0.35, 4.7, 1.3], [0.15, 8.6, 2.1]]) + 5 * pan * pan * (3 - 2 * pan)) * deg,
     wave([[0.5, 1.9, 0.7], [0.3, 5.3, 2.9], [0.15, 7.9, 0.4]]) * deg];
 }
 
@@ -47,32 +49,34 @@ const decodeSrc = `(px, stride, offset) => {
 }`;
 
 async function makeClip(origin) {
-  const key = createHash('sha1').update(JSON.stringify([pose.toString(), W, H, F, FPS, SECONDS, DISTANCE, EXPOSURE])).digest('hex').slice(0, 10);
-  const clip = `${out}/steady-${key}.y4m`;
+  const posterPath = `${root}site/img/poster.png`;
+  const key = createHash('sha256').update(JSON.stringify([
+    'a1-v1', pose.toString(), W, H, F, FPS, SECONDS, DISTANCE, POSTER_WIDTH, POSTER_HEIGHT, EXPOSURE,
+    readFileSync(posterPath),
+  ])).digest('hex').slice(0, 12);
+  const clip = `${out}/steady-a1-${key}.y4m`;
   if (existsSync(clip)) return clip;
-  const photo = `${out}/0442-small.jpg`;
-  execFileSync('ffmpeg', ['-nostdin', '-v', 'error', '-y', '-i', `${root}test/photos/0442.jpg`, '-vf', 'scale=1080:1440', photo]);
   const browser = await launch();
   const ffmpeg = spawn('ffmpeg', ['-nostdin', '-v', 'error', '-y', '-f', 'image2pipe', '-framerate', `${FPS}`, '-c:v', 'png', '-i', '-',
-    '-vf', 'noise=alls=3:allf=t,format=yuv420p', '-f', 'yuv4mpegpipe', `${clip}.part`], { stdio: ['pipe', 'inherit', 'inherit'] });
+    '-vf', 'noise=alls=3:allf=t:all_seed=42,format=yuv420p', '-f', 'yuv4mpegpipe', `${clip}.part`], { stdio: ['pipe', 'inherit', 'inherit'] });
   const done = new Promise((ok, fail) => ffmpeg.on('exit', (code) => (code ? fail(new Error(`ffmpeg exited with ${code}`)) : ok())));
   try {
     const page = await browser.newPage();
-    await page.route('**/sim/0442.jpg', (route) => route.fulfill({ path: photo }));
+    page.on('pageerror', (e) => console.error(`clip page error: ${e.message}`));
+    await page.route('**/sim/poster.png', (route) => route.fulfill({ path: posterPath }));
     await page.goto(`${origin}/site/credits.html`);
-    await page.evaluate(async ({ poseSrc, W, H, F, DISTANCE, EXPOSURE }) => {
+    await page.evaluate(async ({ poseSrc, W, H, F, DISTANCE, POSTER_WIDTH, POSTER_HEIGHT, EXPOSURE }) => {
       const pose = eval(`(${poseSrc})`);
       const THREE = await import('/site/vendor/three.module.js');
       const gl = Object.assign(document.createElement('canvas'), { width: W, height: H });
       const renderer = new THREE.WebGLRenderer({ canvas: gl, antialias: true });
       renderer.setClearColor(0xc9b9a3);
-      const map = await new THREE.TextureLoader().loadAsync('/sim/0442.jpg');
+      const map = await new THREE.TextureLoader().loadAsync('/sim/poster.png');
       map.colorSpace = THREE.SRGBColorSpace;
       map.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      // 0442 at 540x720 has the LCD center at (279, 325) and 2066 px per meter.
-      const k = 2066, photo = new THREE.Mesh(new THREE.PlaneGeometry(540 / k, 720 / k), new THREE.MeshBasicMaterial({ map }));
-      photo.position.set(-9 / k, -35 / k, -DISTANCE);
-      const scene = new THREE.Scene().add(photo);
+      const poster = new THREE.Mesh(new THREE.PlaneGeometry(POSTER_WIDTH, POSTER_HEIGHT), new THREE.MeshBasicMaterial({ map }));
+      poster.position.z = -DISTANCE;
+      const scene = new THREE.Scene().add(poster);
       const cam = new THREE.PerspectiveCamera((2 * Math.atan(H / 2 / F) * 180) / Math.PI, W / H, 0.01, 10);
       cam.rotation.order = 'YXZ';
       const ctx = Object.assign(document.createElement('canvas'), { width: W, height: H }).getContext('2d');
@@ -85,16 +89,23 @@ async function makeClip(origin) {
           ctx.drawImage(gl, 0, 0);
         }
         ctx.globalAlpha = 1;
-        for (let b = 0; b < 12; b++) { ctx.fillStyle = (i >> b) & 1 ? '#fff' : '#000'; ctx.fillRect(b * 40, H - 24, 40, 24); }
+        for (let b = 0; b < 12; b++) {
+          ctx.fillStyle = (i >> b) & 1 ? '#fff' : '#000';
+          ctx.fillRect(b * 40, H - 24, 40, 24);
+        }
         return ctx.canvas.toDataURL('image/png').slice('data:image/png;base64,'.length);
       };
-    }, { poseSrc: pose.toString(), W, H, F, DISTANCE, EXPOSURE });
+    }, { poseSrc: pose.toString(), W, H, F, DISTANCE, POSTER_WIDTH, POSTER_HEIGHT, EXPOSURE });
     for (let i = 0; i < FPS * SECONDS; i++) {
       const png = Buffer.from(await page.evaluate(([i, fps]) => __frame(i, fps), [i, FPS]), 'base64');
       if (!ffmpeg.stdin.write(png)) await new Promise((ok) => ffmpeg.stdin.once('drain', ok));
     }
     ffmpeg.stdin.end();
     await done;
+  } catch (error) {
+    ffmpeg.kill();
+    done.catch(() => {});
+    throw error;
   } finally {
     await browser.close();
   }
@@ -102,25 +113,25 @@ async function makeClip(origin) {
   return clip;
 }
 
-// Timing and pose hooks spliced into the app's main.js as served; the app itself stays untouched.
+// The served app gets temporary timing and pose hooks. Production files stay untouched.
 function instrument(src) {
   const splices = [
-    [/^ *workCtx\.drawImage\(.*\n/m, '', '  __steady.processed(workCtx, frameTime, frameRot.toArray());\n'],
-    [/^ *(?:if \(!)?detect\(.*\n/m, '  const d0 = performance.now();\n', '  const d1 = performance.now();\n'],
-    ['  const hand = fakeHand !== undefined ? fakeHand : hands?.update(now) ?? null;\n', '  const h0 = performance.now();\n', '  const h1 = performance.now();\n'],
-    ['  renderer.render(scene, camera);\n', '  const r0 = performance.now();\n',
-      '  __steady.rendered(now, [d1 - d0, h1 - h0, performance.now() - r0], anchor.matrix.toArray(), stage.visible, !!hands, renderer.getContext(),\n'
-      + '    scene.background?.isTexture ? renderer.properties.get(scene.background).__webglTexture : null);\n'],
+    ['  workCtx.drawImage(image, 0, 0, frameW, frameH);\n', '', '  __steady.processed(workCtx, lastFrameTiming?.frameTime, frameRot.toArray());\n'],
+    ['    const fresh = await detect(image);\n', '    const d0 = performance.now();\n', '    const d1 = performance.now();\n'],
+    ['    const hand = fakeHand !== undefined ? fakeHand : hands?.update(renderNow) ?? null;\n', '    const h0 = performance.now();\n', '    const h1 = performance.now();\n'],
+    ['    renderer.render(scene, camera);\n', '    const r0 = performance.now();\n',
+      '    __steady.rendered(renderNow, [d1 - d0, h1 - h0, performance.now() - r0], anchor.matrix.toArray(), stage.visible, !!hands, renderer.getContext(),\n'
+      + '      scene.background?.isTexture ? renderer.properties.get(scene.background).__webglTexture : null);\n'],
+    ['  return !!hit;\n', '  __steady.detected(!!hit, hit?.acquired === true);\n', ''],
   ];
   for (const [needle, before, after] of splices) {
-    const line = typeof needle === 'string' ? (src.includes(needle) ? needle : null) : src.match(needle)?.[0];
-    if (!line) throw new Error(`main.js no longer contains ${needle}`);
-    src = src.replace(line, before + line + after);
+    if (!src.includes(needle)) throw new Error(`main.js no longer contains ${needle.trim()}`);
+    src = src.replace(needle, before + needle + after);
   }
   return src;
 }
 
-function sim({ poseSrc, decodeSrc, W, H, FPS }) {
+function sim({ poseSrc, decodeSrc, W, H, FPS, noGyro }) {
   const pose = eval(`(${poseSrc})`), decode = eval(decodeSrc);
   const deg = 180 / Math.PI;
   const median = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
@@ -129,9 +140,10 @@ function sim({ poseSrc, decodeSrc, W, H, FPS }) {
   S.processed = (ctx, frameTime, q) => {
     S.last = { i: decode(ctx.getImageData(0, H - 12, 480, 1).data, 4, 0), frameTime, q };
   };
-  // Which camera frame the canvas shows, read in the task that drew it, so no preserved drawing buffer is needed:
-  // from the canvas's own pixels, or where the scene covers the barcode, from the texture its background was drawn
-  // from. null when the canvas has no camera image (a transparent overlay over the video).
+  S.detected = (hit, acquired) => Object.assign(S.last, { hit, acquired });
+
+  // Read the displayed camera frame in the render task, before WebGL can discard its drawing buffer. If scene pixels
+  // cover the barcode, read the camera texture that supplied the background instead.
   const row = new Uint8Array(4 * 4096);
   let fb = null;
   const decodeRow = (w) => {
@@ -160,9 +172,9 @@ function sim({ poseSrc, decodeSrc, W, H, FPS }) {
   };
   S.rendered = (now, ms, m, visible, hands, gl, background) =>
     S.renders.push({ now, end: performance.now(), ms, m, visible, hands, ...drawnFrame(gl, background), ...S.last });
+
   const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
   navigator.mediaDevices.getUserMedia = async () => {
-    // A phone held upright streams portrait frames; the app's landscape request would make Chrome crop the clip.
     const stream = await getUserMedia({ video: { width: W, height: H, resizeMode: 'none' }, audio: false });
     const video = document.getElementById('video');
     const probe = Object.assign(document.createElement('canvas'), { width: 480, height: 1 }).getContext('2d', { willReadFrequently: true });
@@ -170,15 +182,13 @@ function sim({ poseSrc, decodeSrc, W, H, FPS }) {
       probe.drawImage(video, 0, H - 12, 480, 1, 0, 0, 480, 1);
       const i = decode(probe.getImageData(0, 0, 480, 1).data, 4, 0);
       S.shown.push({ i, cap: m.captureTime, pres: m.presentationTime, now });
-      // The first second fixes the clip's start; later the clip loops and its indices start over.
       if (offsets.length < FPS) offsets.push(m.captureTime - (i * 1000) / FPS);
       S.t0 = median(offsets);
       video.requestVideoFrameCallback(onFrame);
     });
     return stream;
   };
-  // A 60 Hz gyro reporting the clip's pose at the time of the event; frame i shows the pose at i / FPS.
-  setInterval(() => {
+  if (!noGyro) setInterval(() => {
     const [yaw, pitch] = pose(S.t0 === null ? 0 : (performance.now() - S.t0) / 1000);
     dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: yaw * deg, beta: 90 + pitch * deg, gamma: 0 }));
   }, 1000 / 60);
@@ -190,23 +200,38 @@ const trueRotation = (i) => {
   const [yaw, pitch] = pose(i / FPS);
   return new THREE.Quaternion().setFromEuler(euler.set(pitch, yaw, 0));
 };
-// Where a point of the anchor's frame belongs on screen in frame i: the LCD center is DISTANCE in front of the
-// starting camera on a wall facing it.
-function truth(i, [x, y, z]) {
-  return project(new THREE.Vector3(x, y, z - DISTANCE).applyQuaternion(trueRotation(i).invert()));
-}
-const drawn = (m, p) => project(new THREE.Vector3(...p).applyMatrix4(new THREE.Matrix4().fromArray(m)));
+const truth = (i, point) => project(new THREE.Vector3(point[0], point[1], point[2] - DISTANCE).applyQuaternion(trueRotation(i).invert()));
+const drawn = (m, point) => project(new THREE.Vector3(...point).applyMatrix4(new THREE.Matrix4().fromArray(m)));
 const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+const appRotation = (m) => new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(m));
+const rotationError = (r, i) => appRotation(r.m).angleTo(trueRotation(i).invert()) * 180 / Math.PI;
 const stats = (xs) => {
   const s = [...xs].sort((a, b) => a - b), at = (k) => s[Math.floor(k * (s.length - 1))] ?? NaN;
   return { med: at(0.5), p95: at(0.95), max: at(1) };
 };
 
+function reacquisitionJumps(renders) {
+  const position = [], rotation = [];
+  let previous = null;
+  for (const r of renders) {
+    if (!r.visible) continue;
+    if (r.acquired && previous) {
+      position.push(dist(
+        drawn(r.m, POINTS.center).map((v, j) => v - truth(r.i, POINTS.center)[j]),
+        drawn(previous.m, POINTS.center).map((v, j) => v - truth(previous.i, POINTS.center)[j]),
+      ));
+      const before = appRotation(previous.m).multiply(trueRotation(previous.i));
+      const after = appRotation(r.m).multiply(trueRotation(r.i));
+      rotation.push(before.angleTo(after) * 180 / Math.PI);
+    }
+    previous = r;
+  }
+  return { count: position.length, position: stats(position), rotation: stats(rotation) };
+}
+
 function analyze({ t0, shown, renders }) {
-  // The compositor starts a frame every vsync. It shows a camera frame from the first vsync after its presentation
-  // time, and the overlay drawn in a requestAnimationFrame from that callback's vsync if the work ended within one
-  // vsync, else from the first vsync after it ended. Camera frames the main thread never saw are placed on a line
-  // fitted to those it saw.
+  // Reconstruct 60 Hz compositor ticks. A camera frame appears after its presentation time. An overlay appears with
+  // its requestAnimationFrame when the work fits that vsync, otherwise at the first vsync after the work ends.
   const VSYNC = 1000 / 60;
   const first = shown.filter((s) => s.i > 0 && s.cap < t0 + SECONDS * 1000 - VSYNC);
   const n = first.length, mi = first.reduce((s, x) => s + x.i, 0) / n, mp = first.reduce((s, x) => s + x.pres, 0) / n;
@@ -214,47 +239,55 @@ function analyze({ t0, shown, renders }) {
   const presented = new Map(first.map((s) => [s.i, s.pres]));
   const presAt = (i) => presented.get(i) ?? mp + slope * (i - mi);
   const onScreenAt = (r) => r.now + VSYNC * Math.max(0, Math.ceil((r.end - r.now) / VSYNC - 1));
-  const jitter = stats(first.map((s) => Math.abs(s.cap - t0 - (s.i * 1000) / FPS)));
   const clipTime = (ms) => (ms - t0) / 1000;
   const inWindow = renders.filter((r) => clipTime(r.end) > WINDOW[0] && clipTime(r.end) < WINDOW[1]);
   const ticks = [];
   let k = renders.findIndex((r) => clipTime(r.now) >= WINDOW[0]), shownI = 0;
+  if (k < 0 || k >= renders.length) throw new Error('capture has no app updates in the measurement window');
   for (let tau = renders[k].now; clipTime(tau) < WINDOW[1]; tau += VSYNC) {
     while (renders[k + 1] && onScreenAt(renders[k + 1]) <= tau + 1) k++;
     while (presAt(shownI + 1) <= tau) shownI++;
-    const r = renders[k];
-    const i = r.drawn ?? shownI;
+    const r = renders[k], i = r.drawn ?? shownI;
+    const centerOffset = drawn(r.m, POINTS.center).map((v, j) => v - truth(i, POINTS.center)[j]);
+    const offCenterOffset = drawn(r.m, POINTS.offCenter).map((v, j) => v - truth(i, POINTS.offCenter)[j]);
     ticks.push({
-      visible: r.visible, lag: i - r.i,
-      a: dist(drawn(r.m, POINTS.a), truth(i, POINTS.a)), b: dist(drawn(r.m, POINTS.b), truth(i, POINTS.b)),
-      aSync: dist(drawn(r.m, POINTS.a), truth(r.i, POINTS.a)), bSync: dist(drawn(r.m, POINTS.b), truth(r.i, POINTS.b)),
-      c: dist(drawn(r.m, POINTS.c), truth(i, POINTS.c)),
-      offB: drawn(r.m, POINTS.b).map((v, j) => v - truth(i, POINTS.b)[j]),
-      offC: drawn(r.m, POINTS.c).map((v, j) => v - truth(i, POINTS.c)[j]),
+      time: clipTime(tau), visible: r.visible, lag: i - r.i,
+      position: Math.hypot(...centerOffset), offCenter: Math.hypot(...offCenterOffset), rotation: rotationError(r, i),
+      centerOffset, offCenterOffset,
     });
   }
   const seen = ticks.filter((t) => t.visible);
-  const shake = [], shakeC = [];
+  const positionStep = [], offCenterStep = [];
   for (let j = 1; j < ticks.length; j++) {
     if (!ticks[j].visible || !ticks[j - 1].visible) continue;
-    shake.push(dist(ticks[j].offB, ticks[j - 1].offB));
-    shakeC.push(dist(ticks[j].offC, ticks[j - 1].offC));
+    positionStep.push(dist(ticks[j].centerOffset, ticks[j - 1].centerOffset));
+    offCenterStep.push(dist(ticks[j].offCenterOffset, ticks[j - 1].offCenterOffset));
   }
-  const gyro = inWindow.map((r) => F * new THREE.Quaternion(...r.q).angleTo(trueRotation(r.i)));
+  const buckets = new Map();
+  for (const tick of ticks) {
+    const key = Math.floor(tick.time);
+    const bucket = buckets.get(key) ?? { n: 0, hidden: 0 };
+    bucket.n++;
+    if (!tick.visible) bucket.hidden++;
+    buckets.set(key, bucket);
+  }
+  const gyro = inWindow.map((r) => new THREE.Quaternion(...r.q).angleTo(trueRotation(r.i)) * 180 / Math.PI);
   const intervals = inWindow.slice(1).map((r, j) => r.end - inWindow[j].end);
   const handsAt = renders.find((r) => r.hands);
   const captured = new Map(first.map((s) => [s.i, s.cap]));
   const stamp = stats(inWindow.map((r) => r.frameTime - (captured.get(r.i) ?? t0 + (r.i * 1000) / FPS)));
   return {
-    tracked: seen.length / Math.max(ticks.length, 1),
-    a: stats(seen.map((t) => t.a)), b: stats(seen.map((t) => t.b)), c: stats(seen.map((t) => t.c)), shakeC: stats(shakeC),
-    aSync: stats(seen.map((t) => t.aSync)), bSync: stats(seen.map((t) => t.bSync)),
-    shake: stats(shake), lag: stats(seen.map((t) => t.lag)), gyro: stats(gyro),
-    detect: stats(inWindow.map((r) => r.ms[0])), hands: stats(inWindow.map((r) => r.ms[1])), render: stats(inWindow.map((r) => r.ms[2])),
-    interval: stats(intervals), depth: stats(inWindow.filter((r) => r.visible).map((r) => -r.m[14])), jitter,
-    stamp, drawn: inWindow.filter((r) => r.drawn != null).length / inWindow.length,
+    position: stats(seen.map((t) => t.position)), offCenter: stats(seen.map((t) => t.offCenter)), rotation: stats(seen.map((t) => t.rotation)),
+    positionStep: stats(positionStep), offCenterStep: stats(offCenterStep),
+    visibleFraction: seen.length / Math.max(ticks.length, 1),
+    flicker: stats([...buckets.values()].map((b) => b.hidden / b.n)), reacquisition: reacquisitionJumps(inWindow),
+    lag: stats(seen.map((t) => t.lag)), gyro: stats(gyro), detect: stats(inWindow.map((r) => r.ms[0])), hands: stats(inWindow.map((r) => r.ms[1])),
+    render: stats(inWindow.map((r) => r.ms[2])), interval: stats(intervals), depth: stats(inWindow.filter((r) => r.visible).map((r) => -r.m[14])),
+    captureGrid: stats(first.map((s) => Math.abs(s.cap - t0 - (s.i * 1000) / FPS))), stamp,
+    drawn: inWindow.filter((r) => r.drawn != null).length / inWindow.length,
     fromCanvas: inWindow.filter((r) => r.drawnFrom === 'canvas').length / inWindow.length,
-    drawnMismatch: inWindow.filter((r) => r.drawn != null && r.drawn !== r.i).length, handsFrom: handsAt ? clipTime(handsAt.end) : null,
+    drawnMismatch: inWindow.filter((r) => r.drawn != null && r.drawn !== r.i).length,
+    handsFrom: handsAt ? clipTime(handsAt.end) : null, ticks: ticks.length, updates: inWindow.length,
   };
 }
 
@@ -265,69 +298,93 @@ async function run(clip, origin, cpu) {
   ]);
   try {
     const page = await browser.newPage({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2 });
-    page.on('pageerror', (e) => console.log(`page error: ${e.message}`));
-    page.on('console', (m) => m.type() === 'error' && console.log(`console: ${m.text()}`));
-    await page.route('**/site/main.js', async (route) => {
-      route.fulfill({ body: instrument(await (await route.fetch()).text()), contentType: 'text/javascript' });
+    page.on('pageerror', (e) => console.error(`page error: ${e.message}`));
+    page.on('console', (m) => m.type() === 'error' && console.error(`console: ${m.text()}`));
+    await page.route(/\/site\/main\.js(?:\?.*)?$/, async (route) => {
+      await route.fulfill({ body: instrument(await (await route.fetch()).text()), contentType: 'text/javascript' });
     });
     if (!opts.hands) await page.route('**/hand_landmarker.task', (route) => route.abort());
-    await page.addInitScript(sim, { poseSrc: pose.toString(), decodeSrc, W, H, FPS });
+    await page.addInitScript(sim, { poseSrc: pose.toString(), decodeSrc, W, H, FPS, noGyro: opts['no-gyro'] });
     await page.goto(`${origin}/site/index.html`);
-    await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 120000 });
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpu });
     await page.click('#go');
+    await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 120000 });
     await page.waitForFunction((end) => __steady.t0 !== null && performance.now() > __steady.t0 + end, (WINDOW[1] + 0.3) * 1000,
-      { timeout: 60000, polling: 200 });
+      { timeout: 90000, polling: 200 });
     const data = await page.evaluate(() => ({ t0: __steady.t0, shown: __steady.shown, renders: __steady.renders }));
     data.gpu = await page.evaluate(() => {
       const gl = document.createElement('canvas').getContext('webgl2');
       return gl.getParameter(gl.getExtension('WEBGL_debug_renderer_info').UNMASKED_RENDERER_WEBGL);
     });
-    return data;
+    return {
+      schema: SCHEMA, cpu, handsRequested: opts.hands, userAgent: await page.evaluate(() => navigator.userAgent),
+      spec: { W, H, F, FPS, SECONDS, DISTANCE, POSTER_WIDTH, POSTER_HEIGHT, WINDOW, EXPOSURE, POINTS }, ...data,
+    };
   } finally {
     await browser.close();
   }
 }
 
-const f = (x) => (Number.isFinite(x) ? x.toFixed(1) : '-');
-const triple = (s) => `${f(s.med)}/${f(s.p95)}/${f(s.max)}`;
+const f = (x, digits = 1) => (Number.isFinite(x) ? x.toFixed(digits) : '-');
+const triple = (s, digits = 1, scale = 1) => `${f(s.med * scale, digits)}/${f(s.p95 * scale, digits)}/${f(s.max * scale, digits)}`;
 const failures = [];
 function report(name, data) {
+  if (data.schema !== SCHEMA || !Array.isArray(data.shown) || !Array.isArray(data.renders)) {
+    throw new Error(`${name} is not a schema ${SCHEMA} A1 steady capture`);
+  }
   const r = analyze(data);
   console.log(`${name} on ${data.gpu ?? 'an unrecorded GPU'}`);
-  console.log(`  tracked ${(r.tracked * 100).toFixed(0)}% of the window${r.handsFrom === null ? '' : `, hands from ${r.handsFrom.toFixed(1)} s`}`);
-  console.log(`  on screen: (a) ${triple(r.a)}  (b) ${triple(r.b)}  shake of (b) ${triple(r.shake)}`);
-  console.log(`  top of the left panel (c), off screen in this clip: ${triple(r.c)}  shake of (c) ${triple(r.shakeC)}`);
-  console.log(`  against the frame the app processed: (a) ${triple(r.aSync)}  (b) ${triple(r.bSync)}  gyro rotation ${triple(r.gyro)}`);
-  console.log(`  gyro looked up at the capture time ${f(r.stamp.med)} ms (median, p95 ${f(r.stamp.p95)}, max ${f(r.stamp.max)})`);
-  console.log(`  shown minus processed frame ${triple(r.lag)}; overlay updates every ${triple(r.interval)} ms`);
-  console.log(`  ms per update: detect ${triple(r.detect)}  hands ${triple(r.hands)}  render ${triple(r.render)}`);
-  console.log(`  canvas shows the camera image in ${(r.drawn * 100).toFixed(0)}% of updates (barcode visible on the canvas in `
-    + `${(r.fromCanvas * 100).toFixed(0)}%, else read from the background texture), ${r.drawnMismatch} of them not the processed frame`);
-  console.log(`  anchor depth ${r.depth.med.toFixed(3)} m (truth ${DISTANCE}); capture time off the 30 fps grid ${triple(r.jitter)} ms`);
-  if (r.a.p95 > MAX_P95) failures.push(`${name}: (a) p95 ${f(r.a.p95)} px is over ${MAX_P95}`);
-  if (r.lag.med > 0) failures.push(`${name}: the screen shows a camera frame ${r.lag.med} newer than the anchor's at the median`);
+  console.log(`  window ${WINDOW[0]}-${WINDOW[1]} s: ${r.ticks} compositor ticks, ${r.updates} app updates`);
+  console.log(`  position jitter px ${triple(r.position)}; frame-to-frame step px ${triple(r.positionStep)}`);
+  console.log(`  off-center jitter px ${triple(r.offCenter)}; frame-to-frame step px ${triple(r.offCenterStep)}`);
+  console.log(`  rotation jitter deg ${triple(r.rotation, 3)}`);
+  console.log(`  visible fraction ${(r.visibleFraction * 100).toFixed(3)}%; flicker, hidden fraction per second % ${triple(r.flicker, 3, 100)}`);
+  console.log(`  reacquisitions ${r.reacquisition.count}; jump px ${triple(r.reacquisition.position)}; jump deg ${triple(r.reacquisition.rotation, 3)}`);
+  console.log(`  anchor depth m ${triple(r.depth, 3)} (truth ${DISTANCE}); shown minus processed frame ${triple(r.lag)}`);
+  console.log(`  update ms: detect ${triple(r.detect)}; hands ${triple(r.hands)}; render ${triple(r.render)}; interval ${triple(r.interval)}`);
+  console.log(`  capture grid error ms ${triple(r.captureGrid)}; gyro lookup error ms ${triple(r.stamp)}; gyro angle error deg ${triple(r.gyro, 3)}`);
+  console.log(`  camera image recovered for ${(r.drawn * 100).toFixed(1)}% of updates, ${(r.fromCanvas * 100).toFixed(1)}% directly from canvas; ${r.drawnMismatch} frame mismatches`);
+  if (r.handsFrom !== null) console.log(`  hand model active from ${r.handsFrom.toFixed(1)} s`);
+  if (r.position.p95 > LIMITS.position) failures.push(`${name}: position jitter p95 ${f(r.position.p95)} px exceeds ${LIMITS.position}`);
+  if (r.rotation.p95 > LIMITS.rotation) failures.push(`${name}: rotation jitter p95 ${f(r.rotation.p95, 3)} deg exceeds ${LIMITS.rotation}`);
+  if (r.visibleFraction < LIMITS.visible) failures.push(`${name}: visible fraction ${r.visibleFraction.toFixed(4)} is below ${LIMITS.visible}`);
+  if (r.reacquisition.position.p95 > LIMITS.reacquisitionPosition) {
+    failures.push(`${name}: reacquisition jump p95 ${f(r.reacquisition.position.p95)} px exceeds ${LIMITS.reacquisitionPosition}`);
+  }
+  if (r.reacquisition.rotation.p95 > LIMITS.reacquisitionRotation) {
+    failures.push(`${name}: reacquisition rotation jump p95 ${f(r.reacquisition.rotation.p95, 3)} deg exceeds ${LIMITS.reacquisitionRotation}`);
+  }
+  return r;
 }
 
-console.log('px in the 720x1280 frame as median/p95/max; (a) LCD center, (b) 0.15 m right, 0.1 m up');
-if (positionals.length) {
-  for (const file of positionals) report(file, JSON.parse(readFileSync(file, 'utf8')));
-} else {
-  const { origin, close } = await serve(root);
-  try {
-    const clip = await makeClip(origin);
-    await withGpu(async () => {
-      for (const cpu of opts.cpu.split(',').map(Number)) for (let n = 1; n <= +opts.runs; n++) {
-        const data = await run(clip, origin, cpu);
-        const file = `${out}/steady-cpu${cpu}${opts.hands ? '-hands' : ''}-${n}.json`;
-        writeFileSync(file, JSON.stringify(data));
-        report(`cpu ${cpu}x, hands ${opts.hands ? 'loaded' : 'blocked'}, run ${n} (${file})`, data);
-      }
-    });
-  } finally {
-    close();
+export { analyze, makeClip, pose, stats };
+export const A1 = { W, H, F, FPS, SECONDS, DISTANCE, POSTER_WIDTH, POSTER_HEIGHT, WINDOW, EXPOSURE, POINTS };
+
+async function main() {
+  console.log('A1 steady benchmark. Triples are median/p95/max. Projected pixels use the 720x1280 camera frame.');
+  console.log(`Thresholds: position p95 ${LIMITS.position} px; rotation p95 ${LIMITS.rotation} deg; visible fraction ${LIMITS.visible}; reacquisition p95 ${LIMITS.reacquisitionPosition} px / ${LIMITS.reacquisitionRotation} deg`);
+  if (positionals.length) {
+    for (const file of positionals) report(file, JSON.parse(readFileSync(file, 'utf8')));
+  } else {
+    const { origin, close } = await serve(root);
+    try {
+      await withGpu(async () => {
+        const clip = await makeClip(origin);
+        console.log(`Clip: ${clip}`);
+        for (const cpu of cpus) for (let n = 1; n <= runs; n++) {
+          const data = await run(clip, origin, cpu);
+          const file = `${out}/steady-a1-cpu${cpu}${opts.hands ? '-hands' : ''}${opts['no-gyro'] ? '-no-gyro' : ''}-${n}.json`;
+          writeFileSync(file, JSON.stringify(data));
+          report(`cpu ${cpu}x, hands ${opts.hands ? 'allowed' : 'blocked'}, ${opts['no-gyro'] ? 'no gyro, ' : ''}run ${n} (${file})`, data);
+        }
+      });
+    } finally {
+      close();
+    }
   }
+  for (const failure of failures) console.error(`FAIL ${failure}`);
+  if (failures.length) process.exit(1);
 }
-for (const failure of failures) console.log(`FAIL ${failure}`);
-if (failures.length) process.exit(1);
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

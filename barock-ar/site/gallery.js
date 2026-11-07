@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FRAME_STYLES, MAP, CORNICE, ARCH } from './catalog.js';
 import { canvasTexture } from './book.js';
 
-// What holds the props: shadow-box niches with their drapes, the cornice, the arch around the thermostat, the map
+// What holds the props: shadow-box niches with their drapes, the cornice, the arch around the poster, the map
 // console, dust and the gold links between things. Everything here is procedural, so the room has no extra assets to load.
 const WARM = new THREE.Color(1, 0.78, 0.4);
 const BORDER = 0.022;
@@ -182,7 +182,7 @@ export function spinPart(mat, { center, radius, z }) {
   return angle;
 }
 
-// A niche is a shallow shadow box: moulded frame, lined sides, a patterned back and a dark veil in front that dims
+// A niche is a shallow shadow box: moulded frame, lined sides, a colored back and a dark veil in front that dims
 // whatever hangs behind it. Its back sits on the wall (z = 0) and it opens toward +z. Cases of the two estates also
 // have a pair of drapes that part from the middle and gather at the sides of the opening.
 export function buildNiche({ shape, w, h, depth, style }) {
@@ -196,7 +196,7 @@ export function buildNiche({ shape, w, h, depth, style }) {
   frame.receiveShadow = true;
 
   const sideMat = new THREE.MeshStandardMaterial({ color: S.side, roughness: 1, side: THREE.BackSide });
-  const backMat = new THREE.MeshStandardMaterial({ map: texture(S.back), emissiveMap: texture(S.back), emissive: 0x000000, roughness: 0.95 });
+  const backMat = new THREE.MeshStandardMaterial({ color: { velvet: 0x741426, linen: 0xc9bb98, damask: 0x123544 }[S.back], roughness: 0.95 });
   const sides = oval
     ? new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, depth, 48, 1, true).rotateX(Math.PI / 2).translate(0, 0, depth / 2), sideMat)
     : new THREE.Mesh(new THREE.BoxGeometry(1, 1, depth).translate(0, 0, depth / 2), sideMat);
@@ -209,7 +209,7 @@ export function buildNiche({ shape, w, h, depth, style }) {
   interior.add(sides, back);
 
   const drapes = S.drape ? [-1, 1].map((s) => {
-    const m = new THREE.Mesh(drapeGeometry, new THREE.MeshStandardMaterial({ map: texture(`${S.drape}Drape`), roughness: S.drape === 'velvet' ? 0.75 : 0.95, side: THREE.DoubleSide }));
+    const m = new THREE.Mesh(drapeGeometry, new THREE.MeshStandardMaterial({ color: S.drape === 'velvet' ? 0x701224 : 0xb5a783, roughness: S.drape === 'velvet' ? 0.75 : 0.95, side: THREE.DoubleSide }));
     m.position.set(s * ow / 2, 0, depth - 0.014);
     m.receiveShadow = true;
     interior.add(m);
