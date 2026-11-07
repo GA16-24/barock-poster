@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
 // Where the GPU scripts can draw with a real GPU: a Mac uses Chrome on Metal in a visible window; the Arch box has
 // no Google Chrome, but its system Chromium reaches the GPU headless through Vulkan. Anything else falls back to
@@ -8,6 +8,7 @@ export const gpu = mac || linux;
 export const gpuName = mac ? 'Metal GPU' : linux ? 'Vulkan GPU' : 'swiftshader';
 
 export function launch(args = []) {
+  if (process.env.BROWSER === 'webkit') return webkit.launch({ headless: true });
   return chromium.launch({
     ...(linux ? { executablePath: '/usr/bin/chromium' } : { channel: 'chrome' }),
     headless: !mac,

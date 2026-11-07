@@ -63,8 +63,8 @@ try {
     };
   });
   await page.goto('http://localhost:8129/site/index.html');
-  await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 120000 });
   await page.click('#go');
+  await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 120000 });
   await page.waitForFunction(() => globalThis.__ar && globalThis.__seek);
   await page.evaluate(() => __ar.setHand(null));
   const key = await page.evaluate(async () => {
@@ -82,7 +82,7 @@ try {
       const m = __anchor.matrix.clone().invert().elements;
       return { pos: [m[12], m[13], m[14]], look: [-m[8], -m[9], -m[10]] };
     });
-    console.log(`t=${t}s ${found ? 'found' : 'NOT FOUND'} camera at (${f(pose.pos)}) m, looking (${f(pose.look)}): ${pose.pos[2].toFixed(2)} m from the wall, ${pose.pos[1] >= 0 ? '+' : ''}${pose.pos[1].toFixed(2)} m vs thermostat`);
+    console.log(`t=${t}s ${found ? 'found' : 'NOT FOUND'} camera at (${f(pose.pos)}) m, looking (${f(pose.look)}): ${pose.pos[2].toFixed(2)} m from the wall, ${pose.pos[1] >= 0 ? '+' : ''}${pose.pos[1].toFixed(2)} m vs poster`);
     for (const [i, c] of CANDIDATES.entries()) {
       const box = await page.evaluate(async ({ size, at, tilt }) => {
         const THREE = await import('/site/vendor/three.module.js');

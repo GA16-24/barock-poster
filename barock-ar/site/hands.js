@@ -86,7 +86,7 @@ export async function createHands(video) {
   let closed = false;
   let pendingSince = null;
 
-  // Returns 'grab' or 'release' on the inference where the debounced state flips.
+  // Returns 'grab' on the first close inference, or 'release' after an open inference persists for the debounce interval.
   function settle(m, now) {
     const raw = closed
       ? m.fist < FIST.open || m.pinch < PINCH.open
@@ -96,7 +96,7 @@ export async function createHands(video) {
       return null;
     }
     pendingSince ??= now;
-    if (now - pendingSince < DEBOUNCE_MS) return null;
+    if (!raw && now - pendingSince < DEBOUNCE_MS) return null;
     closed = raw;
     pendingSince = null;
     return closed ? 'grab' : 'release';

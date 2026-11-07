@@ -69,8 +69,8 @@ export function placeLabels(items, shown) {
   });
 }
 
-export function setStatus(found) {
-  statusEl.textContent = found ? 'GEFUNDEN' : 'SUCHE THERMOSTAT…';
+export function setStatus(found, detail = '') {
+  statusEl.textContent = found ? 'GEFUNDEN' : detail || 'SUCHE PLAKAT…';
   statusEl.classList.toggle('on', found);
 }
 
@@ -86,6 +86,10 @@ export function setProgress(done, total) {
 
 const HINT_KEY = 'barock-hint-seen';
 export function showHint() { hintEl.hidden = localStorage.getItem(HINT_KEY) === '1'; }
+export function setHint(text) {
+  hintEl.textContent = text;
+  hintEl.hidden = false;
+}
 export function hintDone() {
   hintEl.hidden = true;
   localStorage.setItem(HINT_KEY, '1');

@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js?v=2';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ZONES, TITLE_Y, COLS, ROWS, NICHE, ITEMS, AUTHORS, HEAD_SIZE, MEDALLION, MAP, BOOK } from './catalog.js';
 import { buildBook } from './book.js';
-import { buildNiche, buildCornice, buildArch, buildConsole, buildDust, createLink, spinPart } from './gallery.js';
+import { buildNiche, buildCornice, buildArch, buildConsole, buildDust, createLink, spinPart } from './gallery.js?v=2';
 
-// Everything anchored to the thermostat, in its frame (meters, z out of the wall).
+// Everything anchored to the poster, in its frame (meters, z out of the wall).
 export const stage = new THREE.Group();
 
 // One grabbable thing. `holder` sits at the catalog position and carries the pose and selection motion; `inner`
@@ -148,7 +148,7 @@ async function loadModel(e, url) {
 
 const offCenter = (x) => (Math.abs(x) < 0.01 ? 0 : 1);
 
-// The cases open as a wave from the thermostat outward, both cases of a pair at once.
+// The cases open as a wave from the poster outward, both cases of a pair at once.
 for (const item of ITEMS) {
   const [col, row] = item.slot;
   const far = Math.hypot(COLS[col], ROWS[row]) - Math.hypot(COLS[0], ROWS[1]);
@@ -184,14 +184,14 @@ for (const l of links) stage.add(l.group);
 
 const urlOf = (e) => (e.kind === 'item' ? ITEMS.find((i) => i.id === e.id).model : e.kind === 'head' ? e.author.head : e.author.map);
 
-// Resolves once the first view (props, heads, the active map) is loaded; the other maps follow in the background.
+// The poets and active map render first; props and other maps follow in the background.
 export async function loadScene(onProgress) {
-  const isFirst = (e) => e.kind === 'item' || e.kind === 'head' || (e.kind === 'map' && e.author.id === active);
+  const isFirst = (e) => e.kind === 'head' || (e.kind === 'map' && e.author.id === active);
   const first = entries.filter(isFirst);
   let done = 0;
   onProgress(done, first.length);
   await Promise.all(first.map((e) => loadModel(e, urlOf(e)).then(() => onProgress(++done, first.length))));
-  for (const e of entries) if (e.kind === 'map' && !isFirst(e)) loadModel(e, urlOf(e));
+  for (const e of entries) if (!isFirst(e)) loadModel(e, urlOf(e));
 }
 
 const candle = new THREE.PointLight(0xffb060, 0, 0.9, 2);
@@ -258,7 +258,7 @@ const anchor = (e) => e.kind === 'map' ? e.rest.clone().add(new THREE.Vector3(0,
   : e.rest.clone().add(new THREE.Vector3(0, 0, e.kind === 'item' ? 0.16 : 0.14));
 const facePoint = (e) => (e.kind === 'head' ? e.rest.clone().setZ(0.3) : anchor(e));
 const P = (x, y, z) => new THREE.Vector3(x, y, z);
-// Gold threads stay out of the medallions and off the thermostat: a pair arcs over the poets' heads (upper rows)
+// Gold threads stay out of the medallions and off the poster: a pair arcs over the poets' heads (upper rows)
 // or under the book niche (lower rows); a poet's threads leave his name plate and swing out on side `sx`.
 function route(from, to, sx) {
   const a = anchor(from), b = anchor(to);

@@ -1,17 +1,15 @@
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { ITEMS, AUTHORS, ZONES } from '../site/catalog.js';
 import { launch, gpuName } from './browser.mjs';
 import { withGpu } from './gpu-lock.mjs';
 import { serve } from './serve.mjs';
+import { POSTER_WIDTH_M } from '../site/poster.js';
 
-// A synthetic room: a plain wall with the thermostat photo at real scale, seen by a phone 1.8 m away that pans
-// to the center, the left (Der Adel) and the right (Das Volk) while reporting matching gyro readings.
+// A synthetic room: the supplied poster at its configured scale, seen by a phone 1.8 m away that pans to the poets and both estates.
 const root = new URL('..', import.meta.url).pathname;
 const out = `${root}test/out/scene`;
 mkdirSync(out, { recursive: true });
-const photo = `${root}test/out/0442-small.jpg`;
-execFileSync('ffmpeg', ['-nostdin', '-v', 'error', '-y', '-i', `${root}test/photos/0442.jpg`, '-vf', 'scale=1080:1440', photo]);
+const photo = `${root}site/img/poster.png`;
 
 const texts = JSON.parse(readFileSync(`${root}site/data/texts.json`, 'utf8'));
 
@@ -37,68 +35,100 @@ const check = (ok, what) => {
 async function test(origin, browser) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => m.type() === 'error' && !m.text().startsWith('Failed to load resource') && errors.push(m.text()));
-  await page.route('**/sim/0442.jpg', (route) => route.fulfill({ path: photo }));
+  page.on('pageerror', (e) => { errors.push(e.message); console.log(`page error: ${e.message}`); });
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) {
+      errors.push(m.text());
+      console.log(`console error: ${m.text()}`);
+    }
+  });
+  if (process.env.IPHONE) await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.0 Mobile/15E148 Safari/604.1' });
+    Object.defineProperty(navigator, 'platform', { value: 'iPhone' });
+  });
+  if (process.env.APP_URL) await page.route(`${origin}/site/**`, async (route) => {
+    const url = route.request().url().replace(`${origin}/site/`, `${origin}/`);
+    await route.fulfill({ response: await route.fetch({ url }) });
+  });
+  await page.route('**/sim/poster.png', (route) => route.fulfill({ path: photo }));
 
-  await page.addInitScript(({ DISTANCE }) => {
+  const cameraStream = async () => {
+    const DISTANCE = 1.8, POSTER_WIDTH_M = 0.841;
     globalThis.__yaw = 0;
-    navigator.mediaDevices.getUserMedia = async () => {
-      const THREE = await import('/site/vendor/three.module.js');
-      const canvas = document.createElement('canvas');
-      canvas.width = 720; canvas.height = 1280;
-      const renderer = new THREE.WebGLRenderer({ canvas, preserveDrawingBuffer: true });
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.setClearColor(0xc9b9a3);
-      const scene = new THREE.Scene();
-      const wall = new THREE.Mesh(new THREE.PlaneGeometry(8, 5), new THREE.MeshBasicMaterial({ color: 0xc9b9a3 }));
-      wall.position.z = -DISTANCE - 0.001;
-      const map = await new THREE.TextureLoader().loadAsync('/sim/0442.jpg');
-      map.colorSpace = THREE.SRGBColorSpace;
-      // The photo was shot close and slightly oblique. Shrunk onto a wall 1.8 m away, its baked-in perspective would
-      // read as a 20 degree turn, so the photo is rectified: every vertex of a fine grid takes its texture coordinate
-      // from the LCD's homography, which puts the LCD square to the camera at the origin at its real 6.1 x 4.5 cm.
-      const { toGray, detectScreen } = await import('/site/detect.js');
-      const { homography } = await import('/site/pose.js');
-      const img = map.image, pc = document.createElement('canvas');
-      pc.width = img.width; pc.height = img.height;
-      const px = pc.getContext('2d');
-      px.drawImage(img, 0, 0);
-      const H = homography(detectScreen(toGray(px.getImageData(0, 0, pc.width, pc.height).data, pc.width * pc.height), pc.width, pc.height, null).quad);
-      const grid = new THREE.PlaneGeometry(0.24, 0.31, 48, 48);
-      grid.translate(0, -0.015, 0);
-      const pos = grid.attributes.position, uv = grid.attributes.uv;
-      for (let i = 0; i < pos.count; i++) {
-        const X = pos.getX(i), Y = pos.getY(i), w = H[2][0] * X + H[2][1] * Y + H[2][2];
-        uv.setXY(i, (H[0][0] * X + H[0][1] * Y + H[0][2]) / w / img.width, 1 - (H[1][0] * X + H[1][1] * Y + H[1][2]) / w / img.height);
-      }
-      const thermostat = new THREE.Mesh(grid, new THREE.MeshBasicMaterial({ map }));
-      thermostat.position.z = -DISTANCE;
-      scene.add(wall, thermostat);
-      const cam = new THREE.PerspectiveCamera(2 * Math.atan(640 / 960) * 180 / Math.PI, 720 / 1280, 0.01, 10);
-      let yaw = 0, last = performance.now();
-      (function tick() {
-        // The app pairs each video frame with the newest gyro reading, and the video runs a few ticks behind the sim,
-        // so the pan is limited per tick as well as per second to keep that mismatch small on a slow software renderer.
-        const now = performance.now(), step = Math.min(0.35 * (now - last) / 1000, 0.007);
-        last = now;
-        yaw += Math.max(-step, Math.min(step, globalThis.__yaw - yaw));
-        globalThis.__simYaw = yaw;
-        cam.rotation.set(0, yaw, 0);
-        renderer.render(scene, cam);
-        dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: yaw * 180 / Math.PI, beta: 90, gamma: 0 }));
-        requestAnimationFrame(tick);
-      })();
-      return canvas.captureStream(30);
-    };
-  }, { DISTANCE });
+    const THREE = await import('/site/vendor/three.module.js');
+    const canvas = document.createElement('canvas');
+    canvas.width = 720; canvas.height = 1280;
+    const renderer = new THREE.WebGLRenderer({ canvas, preserveDrawingBuffer: true });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setClearColor(0xc9b9a3);
+    const scene = new THREE.Scene();
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(8, 5), new THREE.MeshBasicMaterial({ color: 0xc9b9a3 }));
+    wall.position.z = -DISTANCE - 0.001;
+    const map = await new THREE.TextureLoader().loadAsync('/sim/poster.png');
+    map.colorSpace = THREE.SRGBColorSpace;
+    const poster = new THREE.Mesh(new THREE.PlaneGeometry(POSTER_WIDTH_M, POSTER_WIDTH_M * 1365 / 2048), new THREE.MeshBasicMaterial({ map }));
+    poster.position.z = -DISTANCE;
+    scene.add(wall, poster);
+    const cam = new THREE.PerspectiveCamera(2 * Math.atan(640 / 960) * 180 / Math.PI, 720 / 1280, 0.01, 10);
+    let yaw = 0, last = performance.now();
+    (function tick() {
+      // The app pairs each video frame with the newest gyro reading, and the video runs a few ticks behind the sim,
+      // so the pan is limited per tick as well as per second to keep that mismatch small on a slow software renderer.
+      const now = performance.now(), step = Math.min(0.35 * (now - last) / 1000, 0.007);
+      last = now;
+      yaw += Math.max(-step, Math.min(step, globalThis.__yaw - yaw));
+      globalThis.__simYaw = yaw;
+      cam.rotation.set(0, yaw, 0);
+      renderer.render(scene, cam);
+      const orientation = new Event('deviceorientation');
+      Object.assign(orientation, { alpha: yaw * 180 / Math.PI, beta: 90, gamma: 0 });
+      dispatchEvent(orientation);
+      requestAnimationFrame(tick);
+    })();
+    return canvas.captureStream(30);
+  };
+  await page.route('**/site/main.js*', (route) => {
+    const source = readFileSync(`${root}site/main.js`, 'utf8').replace('navigator.mediaDevices.getUserMedia({', '__mockCamera({');
+    return route.fulfill({ contentType: 'application/javascript', body: `const __mockCamera = ${cameraStream.toString()};\n${source}` });
+  });
 
   await page.goto(`${origin}/site/index.html`);
+  const texture = await page.evaluate(async () => {
+    const { canvasTexture } = await import('/site/book.js');
+    const t = canvasTexture(1, 1, (ctx) => {
+      ctx.fillStyle = '#9a2234';
+      ctx.fillRect(0, 0, 1, 1);
+    });
+    return { data: Array.from(t.image.data), colorSpace: t.colorSpace, flipY: t.flipY };
+  });
+  check(texture.data.join() === '154,34,52,255' && texture.colorSpace === 'srgb' && texture.flipY, 'procedural textures keep their RGBA pixels, color space and orientation');
   await page.screenshot({ path: `${out}/start.png` });
   await page.click('#go');
+  if (process.env.BROWSER === 'webkit') {
+    await page.waitForTimeout(3000);
+    console.log('WebKit state', await page.evaluate(() => ({
+      status: document.getElementById('status').textContent,
+      error: document.getElementById('error').textContent,
+      video: [video.videoWidth, video.videoHeight, video.readyState, video.paused],
+      stream: !!video.srcObject,
+      gum: navigator.mediaDevices.getUserMedia.toString(),
+      frames: globalThis.__ar.frameMs(),
+      timing: globalThis.__ar.timing(),
+      hasVideoFrame: typeof VideoFrame === 'function',
+      hasFrameCallback: typeof video.requestVideoFrameCallback === 'function',
+    })));
+    await page.screenshot({ path: `${out}/webkit-state.png` });
+  }
   await page.waitForFunction(() => document.getElementById('status').textContent === 'GEFUNDEN', null, { timeout: 20000 });
-  check(true, 'thermostat detected');
-  await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 60000 });
+  check(true, 'poster detected');
+  if (process.env.IPHONE) check(await page.evaluate(() => globalThis.__ar.timing().videoTimestamp === null), 'iPhone uses direct video pixels');
+  await page.waitForFunction(() => document.getElementById('progress-text').textContent === 'Bereit', null, { timeout: 60000 }).catch(async (error) => {
+    console.log('loading state', await page.evaluate(() => ({
+      progress: document.getElementById('progress-text').textContent,
+      objects: globalThis.__ar.objects().map((o) => ({ id: o.id, loaded: o.loaded })),
+    })));
+    throw error;
+  });
   await page.waitForFunction((ids) => ids.every((id) => globalThis.__ar.objects().find((o) => o.id === id)?.loaded), expected, { timeout: 60000 });
   check(true, `all ${expected.length} expected objects loaded`);
 
@@ -144,6 +174,11 @@ async function test(origin, browser) {
   await page.mouse.click(tapped.x, tapped.y);
   await page.waitForTimeout(1200);
   check(await title() === texts[tapped.id].title, `tap on ${tapped.id} shows "${await title()}"`);
+  const cardPaint = await page.evaluate(() => {
+    const s = getComputedStyle(document.getElementById('card'));
+    return { background: s.backgroundColor, opacity: s.opacity };
+  });
+  check(cardPaint.background === 'rgb(241, 230, 204)' && cardPaint.opacity === '1', 'open card has a fully opaque background');
   await checkCard(tapped.id);
   await page.screenshot({ path: `${out}/card-tap-${tapped.id}.png` });
   await page.click('#card .close');
@@ -217,7 +252,7 @@ async function test(origin, browser) {
 }
 
 await withGpu(async () => {
-  const { origin, close } = await serve(root);
+  const { origin, close } = process.env.APP_URL ? { origin: process.env.APP_URL, close: () => {} } : await serve(root);
   let browser;
   try {
     browser = await launch(['--autoplay-policy=no-user-gesture-required']);

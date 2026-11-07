@@ -1,25 +1,152 @@
-<!doctype html><meta charset="utf-8"><body style="margin:0;background:#222">
+<!doctype html>
+<meta charset="utf-8">
+<title>Poster recognition</title>
+<style>
+body { margin: 16px; background: #191510; color: #f1e6cc; font: 14px sans-serif; }
+main { display: grid; grid-template-columns: repeat(4, 180px); gap: 12px; }
+figure { margin: 0; }
+canvas { width: 180px; height: 320px; }
+figcaption { padding: 5px 0; white-space: pre-line; }
+</style>
+<main></main>
+<script type="importmap">{ "imports": { "three": "../site/vendor/three.module.js", "three/addons/": "../site/vendor/jsm/" } }</script>
 <script type="module">
-import { toGray, detectScreen } from '../site/detect.js';
-const load = (src) => new Promise((ok, err) => { const i = new Image(); i.onload = () => ok(i); i.onerror = err; i.src = src; });
-const S = 4284 / 1500, W = 360, H = 480;
-window.run = async (frames) => {
-  const out = [];
-  for (const f of frames) {
-    const img = await load(`photos/${f.photo}.jpg`);
-    const [cx, cy, size] = f.view, half = size / 2;
-    const c = document.createElement('canvas'); c.width = W; c.height = H;
-    const g = c.getContext('2d');
-    g.drawImage(img, (cx - half * 0.75) * S, (cy - half) * S, size * 0.75 * S, size * S, 0, 0, W, H);
-    const t0 = performance.now();
-    const r = detectScreen(toGray(g.getImageData(0, 0, W, H).data, W * H), W, H);
-    const ms = performance.now() - t0;
-    if (r) { g.strokeStyle = '#0f0'; g.lineWidth = 3; g.beginPath(); r.quad.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.stroke(); }
-    g.fillStyle = r ? '#0f0' : '#f00'; g.font = 'bold 18px sans-serif'; g.fillText(`${f.photo} ${f.dist} ${ms.toFixed(0)}ms`, 8, 22);
-    document.body.append(c);
-    out.push({ photo: f.photo, dist: f.dist, ms: +ms.toFixed(1), hit: r && { aspect: +r.aspect.toFixed(2), fill: +r.fill.toFixed(2), contrast: +(r.bezel / r.inside).toFixed(2) } });
+import * as THREE from '../site/vendor/three.module.js';
+import { createPosterTracker, POSTER_WIDTH_M } from '../site/poster.js';
+
+const W = 720, H = 1280, F = 960;
+const posterHeight = POSTER_WIDTH_M * 1365 / 2048;
+const load = (src) => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => resolve(image);
+  image.onerror = reject;
+  image.src = src;
+});
+const [poster, thermostat, printedPoster, distantPoster, phoneFrame, suppliedPoster, iphoneScreen] = await Promise.all([load('./poster-source.png'), load('./thermostat.jpg'), load('./printed-poster.jpg'), load('./distant-poster.jpg'), load('./phone-video-frame.png'), load('./photos/supplied-poster.png'), load('./photos/iphone-screen.jpg')]);
+
+function canvas() {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#c9b9a3'; ctx.fillRect(0, 0, W, H);
+  return [c, ctx];
+}
+
+function rectangle(x, y, w, h, angle = 0, filter = '') {
+  const [c, ctx] = canvas();
+  const cx = x + w / 2, cy = y + h / 2;
+  ctx.translate(cx, cy); ctx.rotate(angle); ctx.filter = filter;
+  ctx.drawImage(poster, -w / 2, -h / 2, w, h);
+  const point = (px, py) => {
+    const dx = px - cx, dy = py - cy;
+    return [cx + dx * Math.cos(angle) - dy * Math.sin(angle), cy + dx * Math.sin(angle) + dy * Math.cos(angle)];
+  };
+  return { canvas: c, quad: [point(x, y), point(x + w, y), point(x + w, y + h), point(x, y + h)] };
+}
+
+async function perspective() {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const renderer = new THREE.WebGLRenderer({ canvas: c, preserveDrawingBuffer: true, antialias: true });
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xc9b9a3);
+  const texture = await new THREE.TextureLoader().loadAsync('./poster-source.png');
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(POSTER_WIDTH_M, posterHeight), new THREE.MeshBasicMaterial({ map: texture }));
+  mesh.position.set(0.05, -0.02, -1.8);
+  mesh.rotation.set(-0.12, 0.35, 0.08);
+  scene.add(mesh);
+  const camera = new THREE.PerspectiveCamera(2 * Math.atan(H / 2 / F) * 180 / Math.PI, W / H, 0.01, 10);
+  camera.updateMatrixWorld();
+  mesh.updateMatrixWorld(true);
+  renderer.render(scene, camera);
+  const quad = [[-POSTER_WIDTH_M / 2, posterHeight / 2, 0], [POSTER_WIDTH_M / 2, posterHeight / 2, 0], [POSTER_WIDTH_M / 2, -posterHeight / 2, 0], [-POSTER_WIDTH_M / 2, -posterHeight / 2, 0]].map((p) => {
+    const v = mesh.localToWorld(new THREE.Vector3(...p)).project(camera);
+    return [(v.x + 1) * W / 2, (1 - v.y) * H / 2];
+  });
+  return { canvas: c, quad };
+}
+
+function crop(name, sx, sy, sw, sh, dx, dy, dw, dh) {
+  const [c, ctx] = canvas();
+  ctx.drawImage(poster, sx, sy, sw, sh, dx, dy, dw, dh);
+  return { name, canvas: c, expected: false };
+}
+
+const cases = [
+  { name: 'full', ...rectangle(60, 420, 600, 400), expected: true },
+  (() => { const [c, ctx] = canvas(); ctx.drawImage(suppliedPoster, 60, 420, 600, 400); return { name: 'supplied poster', canvas: c, quad: [[60, 420], [660, 420], [660, 820], [60, 820]], expected: true }; })(),
+  (() => { const [c, ctx] = canvas(); ctx.drawImage(iphoneScreen, 0, 0, W, H); return { name: 'iPhone screen', canvas: c, expected: true }; })(),
+  { name: 'left edge clipped', ...rectangle(-30, 420, 660, 440), expected: true },
+  { name: 'right edge clipped', ...rectangle(90, 420, 660, 440), expected: true },
+  { name: 'small', ...rectangle(160, 500, 400, 267), expected: true },
+  { name: 'off center', ...rectangle(120, 160, 500, 333), expected: true },
+  { name: 'rotated', ...rectangle(60, 428, 600, 400, 0.2), expected: true },
+  { name: 'blurred', ...rectangle(60, 420, 600, 400, 0, 'blur(2px) brightness(0.75)'), expected: true, limit: 25 },
+  { name: 'perspective', ...await perspective(), expected: true },
+  (() => { const [c, ctx] = canvas(); c.width = 1280; c.height = 720; ctx.fillStyle = '#c9b9a3'; ctx.fillRect(0, 0, 1280, 720); ctx.drawImage(poster, 320, 147, 640, 426); return { name: 'wide camera', canvas: c, expected: true }; })(),
+  (() => { const [c, ctx] = canvas(); ctx.drawImage(printedPoster, 0, 370, W, 540); return { name: 'old printed photo', canvas: c, expected: false }; })(),
+  (() => { const [c, ctx] = canvas(); ctx.drawImage(distantPoster, 110, 452.5, 500, 375); return { name: 'old distant photo', canvas: c, expected: false }; })(),
+  (() => { const [c, ctx] = canvas(); c.width = 592; ctx.drawImage(phoneFrame, 0, 0); return { name: 'old phone video', canvas: c, expected: false }; })(),
+  crop('left detail only', 0, 350, 650, 900, 150, 420, 420, 581),
+  crop('right detail only', 1398, 350, 650, 900, 140, 420, 440, 609),
+  crop('foreground only', 300, 950, 1450, 350, 60, 420, 600, 145),
+  { ...crop('title only', 250, 300, 1550, 500, 110, 420, 500, 161), expected: true },
+  (() => { const [c, ctx] = canvas(); ctx.drawImage(thermostat, 0, 0, 720, 960); return { name: 'thermostat', canvas: c, expected: false }; })(),
+  (() => { const [c] = canvas(); return { name: 'blank', canvas: c, expected: false }; })(),
+];
+
+function projectedCorners(matrix) {
+  return [[-POSTER_WIDTH_M / 2, posterHeight / 2, 0], [POSTER_WIDTH_M / 2, posterHeight / 2, 0], [POSTER_WIDTH_M / 2, -posterHeight / 2, 0], [-POSTER_WIDTH_M / 2, -posterHeight / 2, 0]].map((p) => {
+    const v = new THREE.Vector3(...p).applyMatrix4(matrix);
+    return [W / 2 + F * v.x / -v.z, H / 2 - F * v.y / -v.z];
+  });
+}
+
+async function run() {
+  const results = [];
+  for (const test of cases) {
+    const tracker = await createPosterTracker({ inputWidth: test.canvas.width, inputHeight: test.canvas.height, focal: 0.75 * Math.max(test.canvas.width, test.canvas.height), targetUrl: '/site/targets/poster.mind' });
+    const started = performance.now();
+    let hit = null, attempts = 0;
+    while (!hit && attempts < (test.expected ? 18 : 9)) {
+      hit = await tracker.update(test.canvas);
+      attempts++;
+    }
+    const ms = performance.now() - started;
+    tracker.dispose();
+    const actual = hit && projectedCorners(hit.matrix);
+    const errors = actual && test.quad?.map((p, i) => Math.hypot(p[0] - actual[i][0], p[1] - actual[i][1]));
+    const result = { name: test.name, expected: test.expected, found: !!hit, acquired: hit?.acquired ?? false, attempts, ms, maxCornerError: errors ? Math.max(...errors) : null, limit: test.limit ?? 20, details: errors && Math.max(...errors) > 20 ? { expected: test.quad, actual } : undefined };
+    results.push(result);
+    const ctx = test.canvas.getContext('2d');
+    if (ctx && test.quad) {
+      ctx.strokeStyle = '#ffd35a'; ctx.lineWidth = 3; ctx.beginPath();
+      test.quad.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.stroke();
+    }
+    if (ctx && actual) {
+      ctx.strokeStyle = '#38ef7d'; ctx.lineWidth = 3; ctx.beginPath();
+      actual.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.stroke();
+    }
+    const figure = document.createElement('figure');
+    const caption = document.createElement('figcaption');
+    caption.textContent = `${test.name}\n${hit ? 'HIT' : 'miss'} · ${attempts} attempts · ${ms.toFixed(0)} ms${errors ? `\nmax corner ${Math.max(...errors).toFixed(1)} px` : ''}`;
+    figure.append(test.canvas, caption);
+    document.querySelector('main').append(figure);
   }
-  return out;
-};
-window.ready = true;
+  const tracker = await createPosterTracker({ inputWidth: W, inputHeight: H, focal: F, targetUrl: '/site/targets/poster.mind' });
+  const full = cases[0].canvas, blank = cases.at(-1).canvas;
+  let initial = null, initialAttempts = 0;
+  while (!initial && initialAttempts < 9) { initial = await tracker.update(full); initialAttempts++; }
+  const continued = initial && await tracker.update(full);
+  let lost = true;
+  for (let i = 0; i < 3; i++) lost = !await tracker.update(blank) && lost;
+  let reacquired = null, attempts = 0;
+  while (!reacquired && attempts < 9) { reacquired = await tracker.update(full); attempts++; }
+  tracker.dispose();
+  results.push({ name: 'loss and reacquire', expected: true, found: !!(initial && lost && reacquired?.acquired), acquired: !!reacquired?.acquired, attempts, ms: 0, maxCornerError: null, limit: 20, details: { initial: !!initial, continued: continued && !continued.acquired, lost, reacquired: reacquired?.acquired ?? null } });
+  return results;
+}
+globalThis.run = run;
+globalThis.ready = true;
 </script>

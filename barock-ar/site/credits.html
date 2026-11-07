@@ -47,6 +47,11 @@
     ))));
   }
 
+  list.append(el('h2', { textContent: 'Bilderkennung' }), el('ul', {}, el('li', {},
+    el('a', { href: 'https://github.com/hiukim/mind-ar-js', textContent: 'MindAR 1.2.5' }),
+    el('div', { className: 'meta', textContent: 'Hiu Kim Yuen · MIT · Plakaterkennung und Positionsberechnung' }),
+  )));
+
   const texts = await (await fetch('data/texts.json')).json();
   const urls = [...new Set(Object.values(texts).flatMap((t) => t.sources))].sort();
   list.append(el('h2', { textContent: 'Texte' }), el('ul', {}, ...urls.map((u) => el('li', {}, el('a', { href: u, textContent: decodeURI(u) })))));

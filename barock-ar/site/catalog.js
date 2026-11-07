@@ -1,5 +1,5 @@
-// Everything the room shows, hung like a picture gallery. Placement is in meters in the thermostat's frame: origin at
-// the LCD center, x to the right along the wall, y up, z out of the wall toward the viewer.
+// Everything the room shows, hung like a picture gallery. Placement is in meters in the poster's frame: origin at
+// the poster center, x to the right along the wall, y up, z out of the wall toward the viewer.
 // Texts live in data/texts.json under the same ids, so grabbing any object looks up texts[id].
 
 // Every prop gets one shadow-box niche of the same size on a grid. A pair shares a slot: Adel hangs at -x, Volk at +x.
@@ -18,12 +18,12 @@ export const ZONES = {
 // cartouche in its middle. `y` is the bottom of its frieze.
 export const CORNICE = { halfWidth: COLS[1] + NICHE.w / 2 + 0.02, y: ROWS[0] + NICHE.h / 2 + 0.015, frieze: 0.075 };
 export const TITLE_Y = CORNICE.y + CORNICE.frieze / 2;
-// A tall gilt portal holds the book niche at its foot and frames the thermostat in its arch. It stays narrow enough
-// to clear the thermostat housing inside and the light switch beside it.
+// A tall gilt portal holds the book niche at its foot and sits at the poster center. It stays narrow enough
+// to leave the surrounding print visible.
 export const ARCH = { halfWidth: 0.095, band: 0.014, base: -0.395, spring: 0.02 };
 
 // Black lacquer with a gilt lip on red velvet for the nobility, raw pine on linen for the common people, gilt on
-// deep blue for the poets. The names pick canvas textures in gallery.js.
+// deep blue for the poets. Frame names pick canvas textures in gallery.js; back and drape names choose their colors.
 export const FRAME_STYLES = {
   adel: { frame: 'lacquer', lip: true, back: 'velvet', side: 0x2a0a10, drape: 'velvet' },
   volk: { frame: 'pine', lip: false, back: 'linen', side: 0x6b4a2a, drape: 'linen' },
@@ -56,7 +56,7 @@ export const ITEMS = PAIRS.flatMap(({ slot: [col, row], adel, volk }) => [['adel
 })));
 
 // No portrait of Bidermann survives, so his head is a reconstruction (`reconstruction: true`) and says so.
-// Grabbing a head shows the author text and switches the map below the thermostat to that author's place.
+// Grabbing a head shows the author text and switches the map below the poster to that author's place.
 // The book (`${id}-werk`) and the map (`${id}-ort`) are grabbable too. The three heads sit in oval medallions.
 export const AUTHORS = [
   {
@@ -80,7 +80,7 @@ export const HEAD_SIZE = 0.2;
 // Medallion size and the width of the name plate that hangs on its lower rim; the plates are narrower than the
 // 0.285 m between medallions, so they cannot overlap at any distance.
 export const MEDALLION = { w: 0.27, h: 0.36, depth: 0.13, plate: 0.24, plateDrop: 0.175 };
-// The author map is a flat display table 1 m across; the book lies in its own niche below the thermostat.
+// The author map is a flat display table 1 m across; the book lies in its own niche below the poster.
 export const MAP = { size: 1.0, at: [0, -0.7, 0.62] };
 export const BOOK = { size: 0.16, at: [0, -0.255, 0.07], niche: { w: 0.16, h: 0.25, depth: 0.12 } };
 
