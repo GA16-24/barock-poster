@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FRAME_STYLES, MAP, CORNICE, ARCH } from './catalog.js';
+import { FRAME_STYLES, MAP, CORNICE, ARCH, PRINT, ZONES } from './catalog.js';
 import { canvasTexture } from './book.js';
+import { POSTER_WIDTH_M } from './poster.js?v=7';
 
 // What holds the props: shadow-box niches with their drapes, the cornice, the arch around the poster, the map
 // console, dust and the gold links between things. Everything here is procedural, so the room has no extra assets to load.
@@ -196,7 +197,7 @@ export function buildNiche({ shape, w, h, depth, style }) {
   frame.receiveShadow = true;
 
   const sideMat = new THREE.MeshStandardMaterial({ color: S.side, roughness: 1, side: THREE.BackSide });
-  const backMat = new THREE.MeshStandardMaterial({ color: { velvet: 0x741426, linen: 0xc9bb98, damask: 0x123544 }[S.back], roughness: 0.95 });
+  const backMat = new THREE.MeshStandardMaterial({ map: texture(S.back), emissiveMap: texture(S.back), emissive: 0x000000, roughness: 0.95 });
   const sides = oval
     ? new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, depth, 48, 1, true).rotateX(Math.PI / 2).translate(0, 0, depth / 2), sideMat)
     : new THREE.Mesh(new THREE.BoxGeometry(1, 1, depth).translate(0, 0, depth / 2), sideMat);
@@ -209,7 +210,7 @@ export function buildNiche({ shape, w, h, depth, style }) {
   interior.add(sides, back);
 
   const drapes = S.drape ? [-1, 1].map((s) => {
-    const m = new THREE.Mesh(drapeGeometry, new THREE.MeshStandardMaterial({ color: S.drape === 'velvet' ? 0x701224 : 0xb5a783, roughness: S.drape === 'velvet' ? 0.75 : 0.95, side: THREE.DoubleSide }));
+    const m = new THREE.Mesh(drapeGeometry, new THREE.MeshStandardMaterial({ map: texture(`${S.drape}Drape`), roughness: S.drape === 'velvet' ? 0.75 : 0.95, side: THREE.DoubleSide }));
     m.position.set(s * ow / 2, 0, depth - 0.014);
     m.receiveShadow = true;
     interior.add(m);
@@ -224,7 +225,10 @@ export function buildNiche({ shape, w, h, depth, style }) {
   veil.position.z = depth - 0.006;
   veil.renderOrder = 2;
   veil.visible = false;
-  group.add(interior, frame, veil);
+  // Soft shade on the real wall around the case, so it reads as mounted there rather than pasted over the image.
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(w * HALO, h * HALO), new THREE.MeshBasicMaterial({ map: haloTexture(oval), transparent: true, depthWrite: false }));
+  halo.position.z = 0.002;
+  group.add(halo, interior, frame, veil);
 
   return {
     group,
@@ -241,6 +245,21 @@ export function buildNiche({ shape, w, h, depth, style }) {
     },
   };
 }
+// Black with an alpha that is full under the case and fades out over its margin; the case covers the inside.
+const HALO = 1.5;
+const halos = {};
+function haloTexture(oval) {
+  return halos[oval] ??= canvasTexture(128, 128, (ctx, w, h) => {
+    const img = ctx.createImageData(w, h), inner = 1 / HALO;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const u = Math.abs((x + 0.5) / w * 2 - 1), v = Math.abs((y + 0.5) / h * 2 - 1);
+      const out = oval ? Math.hypot(u, v) - inner : Math.hypot(Math.max(u - inner, 0), Math.max(v - inner, 0));
+      img.data[(y * w + x) * 4 + 3] = 150 * Math.max(0, 1 - out / (1 - inner)) ** 2.2;
+    }
+    ctx.putImageData(img, 0, 0);
+  });
+}
+
 // One drape half, its hinge at x = 0 and its free edge at x = 1, rippled in z so the folds catch the light.
 const drapeGeometry = (() => {
   const g = new THREE.PlaneGeometry(1, 1, 24, 1).translate(0.5, 0, 0);
@@ -297,7 +316,9 @@ export function buildCornice() {
   const { halfWidth: hw, y, frieze } = CORNICE;
   const group = new THREE.Group();
   const gilt = new THREE.MeshStandardMaterial(GILT);
-  const lacquer = new THREE.MeshStandardMaterial({ map: texture('lacquer', 3), roughness: 0.25, metalness: 0.1 });
+  // The key light mirrors almost straight into the viewer off the flat frieze and cartouche; glossy, they read as a
+  // pale grey band.
+  const lacquer = new THREE.MeshStandardMaterial({ map: texture('lacquer', 3), roughness: 0.85, metalness: 0.1 });
   const band = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(2 * hw, frieze, 0.05).translate(0, y + frieze / 2, 0.025), lacquer);
   const bead = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 2 * hw, 10).rotateZ(Math.PI / 2).translate(0, y, 0.05), gilt);
@@ -307,7 +328,7 @@ export function buildCornice() {
     .rotateY(-Math.PI / 2).translate(hw, y + frieze, 0), gilt);
   for (const m of [body, bead, cap]) m.castShadow = m.receiveShadow = true;
   band.add(body, bead, cap);
-  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.195), new THREE.MeshStandardMaterial({ map: cartoucheTexture(), alphaTest: 0.5, metalness: 0.35, roughness: 0.45 }));
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.195), new THREE.MeshStandardMaterial({ map: cartoucheTexture(), alphaTest: 0.5, metalness: 0.35, roughness: 0.75 }));
   plate.position.set(0, y + frieze / 2 - 0.004, 0.095);
   group.add(band, plate);
   return {
@@ -375,18 +396,96 @@ export function buildConsole() {
   };
 }
 
-export function buildDust(n = 70) {
-  const seeds = Array.from({ length: n }, () => ({ x: Math.random() * 2.4 - 1.2, y: Math.random() * 1.6, z: 0.1 + Math.random() * 0.6, s: 0.01 + Math.random() * 0.02, p: Math.random() * 6.28 }));
+// Motes of gold dust drifting up through the light, each a soft glowing disc that twinkles on its own beat.
+const moteTexture = () => canvasTexture(64, 64, (ctx, w, h) => {
+  const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.18, 'rgba(255,240,200,0.85)');
+  g.addColorStop(0.45, 'rgba(255,200,110,0.22)');
+  g.addColorStop(1, 'rgba(255,180,80,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+});
+// Over the estates the gold takes the poster's colors: orange toward the Adel, teal toward the Volk.
+const GOLD = new THREE.Color(1, 0.86, 0.6);
+const tintAt = (x) => GOLD.clone().lerp(new THREE.Color(ZONES[x < 0 ? 'adel' : 'volk'].tone), Math.min(1, Math.abs(x) / 1.1) * 0.75);
+export function buildDust(n = 90) {
+  const seeds = Array.from({ length: n }, () => ({ x: Math.random() * 2.4 - 1.2, y: Math.random() * 1.6, z: 0.1 + Math.random() * 0.6, s: 0.01 + Math.random() * 0.02, p: Math.random() * 6.28, f: 1.5 + Math.random() * 3 }));
+  for (const d of seeds) d.tint = tintAt(d.x);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
-  const points = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffe2a0, size: 0.008, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  const points = new THREE.Points(geo, new THREE.PointsMaterial({ map: moteTexture(), vertexColors: true, size: 0.022, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
   points.frustumCulled = false;
   return {
     points,
     update(t) {
-      const a = geo.attributes.position;
-      seeds.forEach((d, i) => a.setXYZ(i, d.x + Math.sin(t * 0.3 + d.p) * 0.04, ((d.y + t * d.s) % 1.6) - 0.8, d.z + Math.cos(t * 0.23 + d.p) * 0.03));
-      a.needsUpdate = true;
+      const a = geo.attributes.position, c = geo.attributes.color;
+      seeds.forEach((d, i) => {
+        const y = (d.y + t * d.s) % 1.6;
+        // Fade in at the bottom and out at the top, so no mote pops at the wrap.
+        const k = Math.min(1, y * 4, (1.6 - y) * 4) * (0.35 + 0.65 * Math.max(0, Math.sin(t * d.f + d.p)) ** 3);
+        a.setXYZ(i, d.x + Math.sin(t * 0.3 + d.p) * 0.04, y - 0.8, d.z + Math.cos(t * 0.23 + d.p) * 0.03);
+        c.setXYZ(i, d.tint.r * k, d.tint.g * k, d.tint.b * k);
+      });
+      a.needsUpdate = c.needsUpdate = true;
+    },
+  };
+}
+
+// The poster's own ink, lit from inside: a plane over the print that adds the letters' colors back onto them, so the
+// printed word glows in register with the paper. `set` drives it each frame:
+//   reveal  0..1  at the entrance a ring of light blooms out from the middle of the underline across the word;
+//   focus   [side, strength]  side 0 lights the orange (Adel) end, 1 the teal (Volk) end, 0.5 the whole word;
+//   lock    0..1  how sure the pose is; held poses drift a little, and a glow beside the letters would show it.
+// A gleam also crosses the word from B to k every few seconds, and a spark runs along the underline toward the focus.
+export function buildPrint() {
+  const uniforms = {
+    map: { value: null }, time: { value: 0 }, reveal: { value: 0 }, focus: { value: new THREE.Vector2(0.5, 0) }, lock: { value: 0 },
+    line: { value: new THREE.Vector2(PRINT.underline.v, PRINT.underline.half) },
+  };
+  const material = new THREE.ShaderMaterial({
+    uniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `
+      uniform sampler2D map; uniform float time, reveal, lock; uniform vec2 focus, line;
+      varying vec2 vUv;
+      void main() {
+        vec4 ink = texture2D(map, vUv);
+        float d = length((vUv - vec2(0.5, line.x)) * vec2(1.5, 1.0));
+        float ring = exp(-pow((d - reveal * 0.9) / 0.07, 2.0)) * (1.0 - reveal);
+        float sweep = exp(-pow((vUv.x + 0.25 * vUv.y - mix(-0.3, 1.5, fract(time / 7.0))) / 0.04, 2.0));
+        float side = abs(focus.x - 0.5) < 0.01 ? 1.0 : exp(-pow((vUv.x - focus.x) / 0.3, 2.0));
+        float lit = 0.12 * reveal + 1.6 * ring + 0.9 * sweep + focus.y * side * (0.35 + 0.12 * sin(time * 3.0));
+        float onLine = step(abs(vUv.y - line.x), 0.009) * step(abs(vUv.x - 0.5), line.y);
+        // Toward the focused end, or end to end for the whole word.
+        float dir = abs(focus.x - 0.5) < 0.01 ? 0.0 : sign(focus.x - 0.5), run = fract(time * 0.6);
+        float spark = dir == 0.0 ? 0.5 + line.y * (2.0 * run - 1.0) : 0.5 + dir * line.y * run;
+        lit += onLine * focus.y * 3.0 * exp(-pow((vUv.x - spark) / 0.015, 2.0));
+        gl_FragColor = vec4(ink.rgb * lit + vec3(1.0, 0.9, 0.7) * sweep * 0.35, ink.a * lock);
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+  mesh.position.z = 0.001;
+  mesh.visible = false;
+  new THREE.TextureLoader().load(PRINT.letters, (t) => {
+    t.colorSpace = THREE.SRGBColorSpace;
+    uniforms.map.value = t;
+    mesh.scale.set(POSTER_WIDTH_M, POSTER_WIDTH_M * t.image.height / t.image.width, 1);
+  }, undefined, () => console.warn(`Schrift des Plakats fehlt: ${PRINT.letters}`));
+  return {
+    mesh,
+    set(t, reveal, focus, lock) {
+      uniforms.time.value = t;
+      uniforms.reveal.value = reveal;
+      uniforms.focus.value.copy(focus);
+      uniforms.lock.value = lock;
+      mesh.visible = !!uniforms.map.value && lock > 0.01 && reveal > 0;
     },
   };
 }
@@ -394,23 +493,28 @@ export function buildDust(n = 70) {
 // A gold thread drawn from one thing to another, with a bead of light running along it. `set` aims it at a new path
 // and restarts the draw; `goal` 0 pulls it back to where it started.
 const SEGMENTS = 56;
+const THREAD = new THREE.Color(0xf6dc96);
 export function createLink() {
   const group = new THREE.Group();
   group.visible = false;
-  const core = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xf6dc96, toneMapped: false }));
-  const halo = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xe0a83a, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  const core = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }));
+  const halo = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
   const bead = new THREE.Mesh(new THREE.SphereGeometry(0.007, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff1c4, toneMapped: false }));
   const glow = new THREE.Mesh(new THREE.SphereGeometry(0.016, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffc860, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
   group.add(core, halo, bead, glow);
   let curve = null, p = 0, goal = 0;
   return {
     group,
-    set(points) {
+    // `from` and `to` color the ends; a thread between the estates runs from the poster's orange to its teal.
+    set(points, from = THREAD, to = THREAD) {
       curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
-      for (const [m, r, radial] of [[core, 0.0038, 6], [halo, 0.011, 8]]) {
+      for (const [m, r, radial, k] of [[core, 0.0038, 6, 1], [halo, 0.011, 8, 0.85]]) {
         m.geometry.dispose();
         m.geometry = new THREE.TubeGeometry(curve, SEGMENTS, r, radial);
         m.userData.radial = radial;
+        const colors = new Float32Array(m.geometry.attributes.position.count * 3), c = new THREE.Color();
+        for (let i = 0; i < colors.length / 3; i++) c.lerpColors(from, to, Math.floor(i / (radial + 1)) / SEGMENTS).multiplyScalar(k).toArray(colors, i * 3);
+        m.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       }
       p = 0;
       goal = 1;

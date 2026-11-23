@@ -9,9 +9,12 @@ import { clearNodeTransform, dedup, flatten, meshopt, prune, simplify, textureCo
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import sharp from 'sharp';
 
+// A prop shows about 100 px tall on a phone and a head about 150 px; more triangles than this only cost frame time,
+// since every one is also drawn into the shadow map. Most props reach 18000; the wig and the castle keep their shape
+// only up to about 27000.
 export const BUDGET = {
-  heads: { bytes: 2.5e6, tris: 100000, px: 2048 },
-  prop: { bytes: 1.5e6, tris: 60000, px: 1024 },
+  heads: { bytes: 2.5e6, tris: 45000, px: 2048 },
+  prop: { bytes: 1.5e6, tris: 28000, px: 1024 },
 };
 export const budgetFor = (e) => BUDGET[e.zone === 'heads' ? 'heads' : 'prop'];
 

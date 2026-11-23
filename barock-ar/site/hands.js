@@ -79,7 +79,9 @@ export async function createHands(video) {
   if (!loaded) return null;
   const { landmarker } = loaded;
 
-  let ranLast = false;
+  // Inference runs every second frame while a hand is in view and every third while none is, which spares a
+  // phone's GPU most of the time and still finds a hand within a tenth of a second.
+  let wait = 0;
   let lastVideoTime = -1;
   let lastSeen = -Infinity;
   let hand = null;
@@ -143,11 +145,8 @@ export async function createHands(video) {
     raw: null,
     update(now) {
       const ready = video.readyState >= 2 && video.currentTime !== lastVideoTime;
-      if (ranLast || !ready) {
-        ranLast = false;
-        return hand && { ...hand, grab: false, release: false };
-      }
-      ranLast = true;
+      if (wait-- > 0 || !ready) return hand && { ...hand, grab: false, release: false };
+      wait = hand ? 1 : 2;
       lastVideoTime = video.currentTime;
       return infer(now);
     },

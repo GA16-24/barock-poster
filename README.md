@@ -28,7 +28,7 @@ Die Kamera funktioniert nur über https oder auf localhost.
 
 **Lage im Raum.** Aus den erkannten Merkmalen berechnet MindAR die Lage des Plakats. `site/poster.js` setzt dieselbe Brennweite wie die three.js-Kamera und wandelt das Ergebnis in eine Pose um deren Mittelpunkt und Maßeinheiten stimmen. Als Druckgröße ist A1 quer mit 84,1 cm Breite eingestellt, was vier A3-Seiten entspricht. Der Gyrosensor liefert die Drehung der Kamera. Weil das gezeigte Kamerabild älter sein kann als die neueste Gyro-Messung, merkt sich die App die Messungen der letzten Sekunde und nimmt die vom Aufnahmezeitpunkt des Bildes. Erkennung und Hintergrundbild stammen immer aus demselben Kamerabild.
 
-**Die Szene.** `site/catalog.js` legt fest, welcher Gegenstand wo hängt und wie groß er ist, in Metern ab der Plakatmitte. `site/scene.js` lädt die Modelle und zeichnet sie mit three.js, mit Umgebungslicht und Schatten. Die Texte stehen in `site/data/texts.json`, `site/info.js` und `site/ui.js` zeigen sie als Karte neben dem Gegenstand. `site/book.js` baut die Bücher mit den Titelseiten aus `site/img/works`.
+**Die Szene.** `site/catalog.js` legt fest, welcher Gegenstand wo hängt und wie groß er ist, in Metern ab der Plakatmitte. `site/scene.js` lädt die Modelle und zeichnet sie mit three.js, mit Umgebungslicht und Schatten. Die Texte stehen in `site/data/texts.json`, `site/info.js` und `site/ui.js` zeigen sie als Karte neben dem Gegenstand. `site/book.js` baut die Bücher mit den Titelseiten aus `site/img/works`. Das gedruckte Plakat spielt mit: Seine Schrift leuchtet in ihren eigenen Farben auf, zuerst beim Erscheinen der Szene, dann bei jeder Wahl. Ein Gegenstand des Adels lässt das orange B leuchten, einer des Volkes das türkise k, ein Dichter das ganze Wort. `tools/poster-letters.mjs` schneidet dafür Schrift und Unterstrich aus `site/img/poster.png` aus.
 
 **Die Hand.** `site/hands.js` lässt MediaPipe in jedem zweiten Kamerabild nach einer Hand suchen. Aus den Abständen der Fingerspitzen zur Handfläche erkennt es eine Faust oder einen Pinzettengriff. Eine Hand, die schon geschlossen ins Bild kommt, greift nichts, bis sie sich einmal öffnet.
 
@@ -58,7 +58,7 @@ npm run target      # kompiliert site/img/poster.png nach site/targets/poster.mi
 cd site && python3 -m http.server 8000 --bind 127.0.0.1
 ```
 
-Am Computer läuft die Seite dann unter http://localhost:8000. Auf `localhost` erlaubt der Browser die Kamera auch ohne https. `npm run target` ist nur nach einer Änderung am Plakat nötig.
+Am Computer läuft die Seite dann unter http://localhost:8000. Auf `localhost` erlaubt der Browser die Kamera auch ohne https. `npm run target` ist nur nach einer Änderung am Plakat nötig und schneidet dann auch die leuchtende Schrift neu aus.
 
 ### Tests
 

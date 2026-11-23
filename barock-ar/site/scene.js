@@ -4,7 +4,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js?v=2'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ZONES, TITLE_Y, COLS, ROWS, NICHE, ITEMS, AUTHORS, HEAD_SIZE, MEDALLION, MAP, BOOK } from './catalog.js';
 import { buildBook } from './book.js';
-import { buildNiche, buildCornice, buildArch, buildConsole, buildDust, createLink, spinPart } from './gallery.js?v=2';
+import { buildNiche, buildCornice, buildArch, buildConsole, buildDust, buildPrint, createLink, spinPart } from './gallery.js?v=3';
 
 // Everything anchored to the poster, in its frame (meters, z out of the wall).
 export const stage = new THREE.Group();
@@ -72,11 +72,11 @@ function hang(entry, niche, start) {
   entry.t0 = start + ENTER.grow * 0.8;
 }
 
-function addLabel(text, sub, kind, at, width, start, id = null) {
+function addLabel(text, sub, kind, at, width, start, id = null, tone = null) {
   const marker = new THREE.Object3D();
   marker.position.fromArray(at);
   stage.add(marker);
-  labels.push({ text, sub, kind, id, marker, width, show: 0, start });
+  labels.push({ text, sub, kind, id, marker, width, show: 0, start, tone });
 }
 
 let renderer = null, world = null;
@@ -169,7 +169,7 @@ for (const a of AUTHORS) {
   addLabel(a.name.split(' ').at(-1), a.reconstruction ? `${a.life}\nRekonstruktion` : a.life, 'name', [a.at[0], a.at[1] - MEDALLION.plateDrop, MEDALLION.depth + 0.012], MEDALLION.plate, 0.75 + offCenter(a.at[0]) * 0.1, a.id);
 }
 
-for (const [name, z] of Object.entries(ZONES)) addLabel(z.title, '', 'zone', [z.x, TITLE_Y, name === 'autoren' ? 0.1 : 0.055], 0.4, name === 'autoren' ? 0.25 : 0.4);
+for (const [name, z] of Object.entries(ZONES)) addLabel(z.title, '', 'zone', [z.x, TITLE_Y, name === 'autoren' ? 0.1 : 0.055], 0.4, name === 'autoren' ? 0.25 : 0.4, null, z.tone);
 const cornice = buildCornice(), arch = buildArch(), table = buildConsole();
 stage.add(cornice.group, arch.group, table.group);
 const structure = (age) => {
@@ -181,6 +181,11 @@ const dust = buildDust();
 stage.add(dust.points);
 const links = [createLink(), createLink()];
 for (const l of links) stage.add(l.group);
+// The printed word plays along: it blooms first, and the cases open after it.
+const print = buildPrint();
+stage.add(print.mesh);
+const focus = new THREE.Vector2(0.5, 0), focusGoal = new THREE.Vector2(0.5, 0);
+let lock = 0;
 
 const urlOf = (e) => (e.kind === 'item' ? ITEMS.find((i) => i.id === e.id).model : e.kind === 'head' ? e.author.head : e.author.map);
 
@@ -191,7 +196,8 @@ export async function loadScene(onProgress) {
   let done = 0;
   onProgress(done, first.length);
   await Promise.all(first.map((e) => loadModel(e, urlOf(e)).then(() => onProgress(++done, first.length))));
-  for (const e of entries) if (!isFirst(e)) loadModel(e, urlOf(e));
+  // Books are built in initStage; urlOf would hand them their author's map.
+  for (const e of entries) if (!isFirst(e) && e.kind !== 'book') loadModel(e, urlOf(e));
 }
 
 const candle = new THREE.PointLight(0xffb060, 0, 0.9, 2);
@@ -201,7 +207,11 @@ export function initStage(r, scene) {
   renderer = r;
   world = scene;
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  // The room's lamps burn warm like candles, so gilt reflects gold instead of grey and every surface gets the glow.
+  const room = new RoomEnvironment();
+  room.traverse((o) => (o.isLight ? o.color : o.material?.emissive)?.multiply(CANDLELIGHT));
+  scene.environment = pmrem.fromScene(room, 0.04).texture;
+  room.dispose();
   scene.environmentIntensity = 0.75;
   pmrem.dispose();
 
@@ -263,7 +273,7 @@ const P = (x, y, z) => new THREE.Vector3(x, y, z);
 function route(from, to, sx) {
   const a = anchor(from), b = anchor(to);
   if (from.kind === 'item') {
-    const y = from.rest.y > 0 ? [0.64, 0.675] : [-0.5, -0.47];
+    const y = from.rest.y > 0 ? [0.64, 0.675] : [-0.58, -0.55];
     return [a, P(a.x * 0.8, y[0], 0.3), P(0, y[1], 0.32), P(b.x * 0.8, y[0], 0.3), b];
   }
   const poet = from.kind === 'head' ? from : to.kind === 'head' ? to : null;
@@ -285,7 +295,11 @@ export function select(e) {
   selected = e;
   for (const x of entries) x.role = null;
   links.forEach((l) => l.release());
+  focusGoal.y = 0;
   if (!e) { lookAt = null; return; }
+  // B is at u = 0.1 of the print and k at 0.9.
+  focusGoal.set(e.kind === 'item' ? (e.zone === 'adel' ? 0.1 : 0.9) : 0.5, 1);
+  if (e.kind === 'item' && focus.y < 0.05) focus.x = focusGoal.x;
   if (e.kind === 'head') {
     active = e.author.id;
     e.pitchS.v += 1.4;
@@ -294,7 +308,8 @@ export function select(e) {
   related.forEach((r, i) => {
     r.role = e.kind === 'item' ? 'partner' : 'related';
     const poet = e.kind === 'item' ? null : e.kind === 'head' ? e : r.kind === 'head' ? r : head(e.author);
-    links[i].set(route(e, r, Math.sign(poet?.rest.x) || (i ? 1 : -1)));
+    const tone = (x) => (x.kind === 'item' ? new THREE.Color(ZONES[x.zone].tone) : undefined);
+    links[i].set(route(e, r, Math.sign(poet?.rest.x) || (i ? 1 : -1)), tone(e), tone(r));
   });
   lookAt = facePoint(e);
   if (e.kind === 'item') {
@@ -305,6 +320,12 @@ export function select(e) {
 export const selectedEntry = () => selected;
 
 const GLOW = new THREE.Color(0.07, 0.05, 0.015);
+const CANDLELIGHT = new THREE.Color(1, 0.86, 0.66);
+// A flash of light runs over each case as it finishes opening; the cases open in a wave, so the flash travels too.
+// A slow sway of the flame, all under 2 Hz: the scene draws at the camera's 25 to 30 fps, and faster terms showed up
+// as a random strobe on whatever stands near the candle, like the crown when it comes forward.
+const candleFlicker = (t) => 0.86 + 0.08 * Math.sin(t * 6.1) * Math.sin(t * 1.7) + 0.06 * Math.sin(t * 9.4 + 1);
+const sheen = (age, at) => 1.3 * Math.exp(-(((age - at) / 0.2) ** 2));
 const V = new THREE.Vector3();
 
 function aim(e, p, dt, w = 7.7, zeta = 0.58) {
@@ -341,8 +362,13 @@ const IDLE = {
   },
 };
 
-export function updateScene(t, dt, age = Infinity) {
+// `locked` says the pose comes from a recent sighting of the poster rather than a held one.
+export function updateScene(t, dt, age = Infinity, locked = true) {
   dust.update(t);
+  lock = ease(lock, +locked, dt, locked ? 4 : 12);
+  focus.x = ease(focus.x, focusGoal.x, dt, 6);
+  focus.y = ease(focus.y, focusGoal.y, dt, focusGoal.y ? 5 : 3);
+  print.set(t, smooth(ramp(age, 0, 0.9)), focus, lock);
   structure(age);
   for (const l of labels) l.show = ramp(age, l.start, 0.4);
   for (const l of links) l.update(t, dt);
@@ -359,7 +385,7 @@ export function updateScene(t, dt, age = Infinity) {
     const dimGoal = !unrelated ? 0 : e.kind === 'item' ? (selected.kind === 'item' ? 1 : 0.7) : e.kind !== 'head' && selected.kind === 'item' ? 0.8 : 0;
     e.dim = ease(e.dim, dimGoal, dt, 5);
     e.spin = e === selected && e.kind === 'item' ? e.spin + dt * 0.5 : ease(wrap(e.spin), 0, dt, 3);
-    if (e.niche && (e.kind !== 'book' || e.author.id === active)) e.niche.set(smooth(ramp(age, e.niche.start, ENTER.grow)), e.lit, e.dim, smooth(ramp(age, e.drape, ENTER.drape)));
+    if (e.niche && (e.kind !== 'book' || e.author.id === active)) e.niche.set(smooth(ramp(age, e.niche.start, ENTER.grow)), Math.max(e.lit, sheen(age, e.niche.start + ENTER.grow)), e.dim, smooth(ramp(age, e.drape, ENTER.drape)));
     if (e.kind === 'head') aim(e, selected ? (selected !== e ? lookAt : null) : glance(e, t), dt);
 
     const h = e.holder;
@@ -387,13 +413,12 @@ export function updateScene(t, dt, age = Infinity) {
     if (e.angle) e.angle.value = t * e.wheel.rate;
     if (e.book) e.book.setOpen(l);
     if (e.mixer) e.mixer.update(dt);
-    const lum = Math.max(e.hover, e.lit * 0.8, e.candle ? 0.25 + 0.15 * Math.sin(t * 17) * Math.sin(t * 5.3) : 0);
+    const lum = Math.max(e.hover, e.lit * 0.8, e.candle ? 0.25 * candleFlicker(t) : 0);
     if (lum > 1e-3 || e.lum > 1e-3) for (const m of e.mats) m.emissive.copy(m.userData.emissive0).lerp(GLOW, Math.min(lum, 1));
     e.lum = lum;
   }
 
-  const flicker = 0.82 + 0.12 * Math.sin(t * 17.3) * Math.sin(t * 5.1) + 0.06 * Math.sin(t * 31);
-  candle.intensity = 0.22 * flicker * ramp(age, 1.2, 0.8);
+  candle.intensity = 0.22 * candleFlicker(t) * ramp(age, 1.2, 0.8);
   const partner = entries.find((e) => e.role === 'partner');
   accent.intensity = ease(accent.intensity, partner ? 0.4 : 0, dt, 6);
 }

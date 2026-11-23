@@ -39,6 +39,7 @@ export function initLabels(labels, onPick) {
     }
     el.className = `label ${l.kind}`;
     el.textContent = l.text;
+    if (l.tone) el.style.color = l.tone;
     if (l.sub) {
       const sub = document.createElement('small');
       sub.textContent = l.sub;

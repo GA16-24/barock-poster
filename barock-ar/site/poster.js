@@ -62,6 +62,8 @@ export async function createPosterTracker({ inputWidth, inputHeight, focal, targ
     let raw = null, disposed = false, confirmations = 0, emitted = false, misses = 0;
 
     return {
+      size: [physicalWidthM, physicalWidthM * targetDimensions[1] / targetDimensions[0]],
+      get tracking() { return raw !== null; },
       async update(canvas) {
         if (disposed) return null;
         let inputT = null, acquired = false;

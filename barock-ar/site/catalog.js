@@ -9,18 +9,23 @@ export const NICHE = { w: 0.33, h: 0.37, depth: 0.14, fit: [0.27, 0.3], reach: 0
 export const COLS = [0.615, 0.955];
 export const ROWS = [0.57, 0.19, -0.19, -0.57];
 
+// `tone` is the poster's ink at that end of the word, lightened to read over the camera image: its orange B faces
+// the Adel, its teal k the Volk.
 export const ZONES = {
-  adel: { title: 'Der Adel', x: -(COLS[0] + COLS[1]) / 2, style: 'adel' },
+  adel: { title: 'Der Adel', x: -(COLS[0] + COLS[1]) / 2, style: 'adel', tone: '#f0a040' },
   autoren: { title: 'Drei Dichter', x: 0, style: 'autoren' },
-  volk: { title: 'Das Volk', x: (COLS[0] + COLS[1]) / 2, style: 'volk' },
+  volk: { title: 'Das Volk', x: (COLS[0] + COLS[1]) / 2, style: 'volk', tone: '#40dcae' },
 };
 // One gilt cornice runs over both grids and the poets and carries the zone titles; the poets' title sits on the
 // cartouche in its middle. `y` is the bottom of its frieze.
 export const CORNICE = { halfWidth: COLS[1] + NICHE.w / 2 + 0.02, y: ROWS[0] + NICHE.h / 2 + 0.015, frieze: 0.075 };
 export const TITLE_Y = CORNICE.y + CORNICE.frieze / 2;
-// A tall gilt portal holds the book niche at its foot and sits at the poster center. It stays narrow enough
-// to leave the surrounding print visible.
-export const ARCH = { halfWidth: 0.095, band: 0.014, base: -0.395, spring: 0.02 };
+// The printed word and its underline, in the poster's uv (0..1, v up), as img/poster-letters.png cuts them out.
+// The underline's orange end points to the Adel and its teal end to the Volk.
+export const PRINT = { letters: 'img/poster-letters.png', underline: { v: 0.359, half: 0.248 } };
+// A tall gilt portal holds the book niche. Its finial hangs from the middle of the printed underline (y = -0.079), so
+// the portal leaves the whole word "Barock" in view.
+export const ARCH = { halfWidth: 0.095, band: 0.014, base: -0.475, spring: -0.217 };
 
 // Black lacquer with a gilt lip on red velvet for the nobility, raw pine on linen for the common people, gilt on
 // deep blue for the poets. Frame names pick canvas textures in gallery.js; back and drape names choose their colors.
@@ -82,7 +87,7 @@ export const HEAD_SIZE = 0.2;
 export const MEDALLION = { w: 0.27, h: 0.36, depth: 0.13, plate: 0.24, plateDrop: 0.175 };
 // The author map is a flat display table 1 m across; the book lies in its own niche below the poster.
 export const MAP = { size: 1.0, at: [0, -0.7, 0.62] };
-export const BOOK = { size: 0.16, at: [0, -0.255, 0.07], niche: { w: 0.16, h: 0.25, depth: 0.12 } };
+export const BOOK = { size: 0.16, at: [0, -0.345, 0.07], niche: { w: 0.16, h: 0.25, depth: 0.12 } };
 
 export const ALL_IDS = [
   ...ITEMS.map((i) => i.id),

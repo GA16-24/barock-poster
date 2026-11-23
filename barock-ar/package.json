@@ -4,7 +4,7 @@
   "description": "AR: Baroque nobility, people and three poets around the Barock poster",
   "scripts": {
     "vendor": "node tools/vendor.mjs",
-    "target": "npm run vendor && node tools/compile-poster.mjs",
+    "target": "npm run vendor && node tools/compile-poster.mjs && node tools/poster-letters.mjs",
     "test:detect": "node test/detect.mjs",
     "test:pose": "node test/pose.mjs",
     "test:app": "node test/app.mjs",

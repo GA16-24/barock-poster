@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { createPosterTracker } from './poster.js?v=6';
-import { stage, entries, labels, initStage, loadScene, updateScene, pick, select, setHover, setGaze, selectedEntry } from './scene.js?v=3';
+import { createPosterTracker } from './poster.js?v=7';
+import { stage, entries, labels, initStage, loadScene, updateScene, pick, select, setHover, setGaze, selectedEntry } from './scene.js?v=4';
 import { loadInfo, infoFor } from './info.js';
 import * as ui from './ui.js';
 
@@ -21,13 +21,26 @@ const REPLAY_MS = 5000;
 // centre has been off screen for CARD_GRACE_MS, so it never explains something the user no longer sees.
 const SELECTION_GRACE_MS = 2000;
 const CARD_GRACE_MS = 300;
+// A full search for a lost poster costs several tracked frames and stalls the render. While the gyro holds the scene
+// with less than SEARCH_SHOWN of the poster on screen, it can hardly succeed, so it runs only every SEARCH_AWAY_MS.
+const SEARCH_SHOWN = 0.2;
+const SEARCH_AWAY_MS = 500;
+// The rAF loop runs faster than the camera; a frame already measured is only measured again after this long.
+const REMEASURE_MS = 100;
+// The glowing print sits on the printed ink, so a few pixels of pose error show as doubled letters. It only shows
+// while the pose comes from a sighting this recent and the poster crosses the screen slower than STILL_NDC per second
+// (2 is the frame width); while the phone pans, the pose lags the image by a few pixels.
+const LOCK_MS = 250;
+const STILL_NDC = 0.25;
+// Render resolution follows the frame time: below 30 fps it drops a step, with clear headroom it climbs back.
+const PIXEL_RATIO = { max: Math.min(devicePixelRatio, 2), min: 1, step: 0.25, slowMs: 30, fastMs: 16, everyMs: 2000 };
 
 const $ = (id) => document.getElementById(id);
 const video = $('video');
 const canvas = $('view');
 
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(PIXEL_RATIO.max);
 renderer.setClearColor(0x000000, 0);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -79,10 +92,15 @@ function rotationAt(t, out) {
   return out.slerpQuaternions(a.q, b.q, (t - a.t) / (b.t - a.t));
 }
 
-// The poster hangs level on a vertical wall, so only its heading comes from the estimated normal.
+// A poster on a wall hangs level and plumb, so an estimate within PLUMB of vertical keeps only its heading, which
+// drops its noise. A poster on a surface that leans, like a laptop screen or a desk, keeps the estimated tilt; forced
+// upright, the room stood in front of it at an angle and slid off the print.
+const PLUMB = THREE.MathUtils.degToRad(15);
 const normal = new THREE.Vector3(), right = new THREE.Vector3(), basis = new THREE.Matrix4();
 function uprightOnWall(q) {
-  normal.copy(Z).applyQuaternion(q).setY(0);
+  normal.copy(Z).applyQuaternion(q);
+  if (Math.abs(normal.y) > Math.sin(PLUMB)) return;
+  normal.setY(0);
   if (normal.lengthSq() < 1e-6) return;
   normal.normalize();
   q.setFromRotationMatrix(basis.makeBasis(right.crossVectors(UP, normal), UP, normal));
@@ -150,7 +168,36 @@ function fitCanvas() {
 }
 addEventListener('resize', fitCanvas);
 
+function place() {
+  cameraFromWorld.copy(frameRot).invert();
+  anchor.matrix.compose(viewPos.copy(pos).applyQuaternion(cameraFromWorld), viewQuat.copy(cameraFromWorld).multiply(quat), ONE);
+  anchor.matrixWorldNeedsUpdate = true;
+}
+
+// Share of a 5 x 5 grid on the held poster that lands inside the camera frame.
+const gridPoint = new THREE.Vector3();
+function shownFraction() {
+  const [w, h] = poster.size;
+  let n = 0;
+  for (let i = 0; i < 25; i++) {
+    gridPoint.set((i % 5 / 4 - 0.5) * w, (Math.floor(i / 5) / 4 - 0.5) * h, 0).applyMatrix4(anchor.matrix);
+    if (gridPoint.z >= 0) continue;
+    gridPoint.applyMatrix4(camera.projectionMatrix);
+    if (Math.abs(gridPoint.x) <= 1 && Math.abs(gridPoint.y) <= 1) n++;
+  }
+  return n / 25;
+}
+
+let lastSearch = -Infinity, lastMeasure = -Infinity, newVideoFrame = true;
 async function detect(image) {
+  const now = performance.now();
+  place();
+  if (!newVideoFrame && now - lastMeasure < REMEASURE_MS) return false;
+  const held = !poster.tracking && hasAnchor && stage.visible;
+  if (held && now - lastSearch < SEARCH_AWAY_MS && shownFraction() < SEARCH_SHOWN) return false;
+  if (!poster.tracking) lastSearch = now;
+  newVideoFrame = false;
+  lastMeasure = now;
   workCtx.drawImage(image, 0, 0, frameW, frameH);
   const hit = await poster.update(work);
   if (hit) {
@@ -165,18 +212,18 @@ async function detect(image) {
       pos.copy(targetPos);
       quat.copy(targetQuat);
     } else {
-      if (worldFromCamera) pos.lerp(targetPos, POSITION_SMOOTHING);
-      else {
+      if (worldFromCamera) {
+        pos.lerp(targetPos, POSITION_SMOOTHING);
+        quat.slerp(targetQuat, ROTATION_SMOOTHING);
+      } else {
         const distance = THREE.MathUtils.lerp(pos.length(), targetPos.length(), DISTANCE_SMOOTHING);
         pos.copy(targetPos).setLength(distance);
         quat.slerp(targetQuat, 1);
       }
     }
     lastSeen = performance.now();
+    place();
   }
-  cameraFromWorld.copy(frameRot).invert();
-  anchor.matrix.compose(viewPos.copy(pos).applyQuaternion(cameraFromWorld), viewQuat.copy(cameraFromWorld).multiply(quat), ONE);
-  anchor.matrixWorldNeedsUpdate = true;
   return !!hit;
 }
 
@@ -236,14 +283,37 @@ function sizeOnScreen(matrixWorld, meters) {
   return Math.hypot((edgeB.x - edgeA.x) * frameW, (edgeB.y - edgeA.y) * frameH) / 2 / frameH;
 }
 
+const posterCenter = new THREE.Vector3(), lastCenter = new THREE.Vector2(NaN, NaN);
+
+let workMs = 0, lastAdapt = 0;
+function adaptResolution(ms, now) {
+  workMs += (ms - workMs) * 0.05;
+  if (now - lastAdapt < PIXEL_RATIO.everyMs) return;
+  const ratio = renderer.getPixelRatio();
+  const next = workMs > PIXEL_RATIO.slowMs ? Math.max(ratio - PIXEL_RATIO.step, PIXEL_RATIO.min)
+    : workMs < PIXEL_RATIO.fastMs ? Math.min(ratio + PIXEL_RATIO.step, PIXEL_RATIO.max) : ratio;
+  lastAdapt = now;
+  if (next === ratio) return;
+  renderer.setPixelRatio(next);
+  fitCanvas();
+}
+
 let hands = null;
 let fakeHand;
 let lastFrame = null, lastFrameTiming = null;
 const frameStats = { n: 0, total: 0 };
 
+const videoFrames = !directVideo && !!video.requestVideoFrameCallback;
 function queueFrame() {
-  if (!directVideo && video.requestVideoFrameCallback) video.requestVideoFrameCallback(frame);
+  if (videoFrames) video.requestVideoFrameCallback(frame);
   else requestAnimationFrame((now) => frame(now, { presentationTime: now }));
+}
+// The rAF loop learns about new camera frames from requestVideoFrameCallback where there is one; without it every
+// pass measures, and REMEASURE_MS covers a callback that never fires.
+const flagFrames = !videoFrames && !!video.requestVideoFrameCallback;
+if (flagFrames) {
+  const mark = () => { newVideoFrame = true; video.requestVideoFrameCallback(mark); };
+  video.requestVideoFrameCallback(mark);
 }
 
 // Runs once per camera frame the browser presents. The tracker and the background read one snapshot of it: during
@@ -264,6 +334,7 @@ async function frame(_, { captureTime, presentationTime }) {
     }
     lastFrameTiming = { captureTime, presentationTime, frameTime, videoTimestamp: image === video ? null : image.timestamp, now: t0 };
     if (video.videoWidth !== videoW || video.videoHeight !== videoH) await resize(video.videoWidth, video.videoHeight);
+    if (!flagFrames) newVideoFrame = true;
     const fresh = await detect(image);
     if (fresh) startContent();
     const renderNow = performance.now();
@@ -277,7 +348,10 @@ async function frame(_, { captureTime, presentationTime }) {
     if (seen) sceneAge += dt;
     wasSeen = seen;
     stage.visible = seen;
-    updateScene(renderNow / 1000, dt, sceneAge);
+    posterCenter.setFromMatrixPosition(anchor.matrix).project(camera);
+    const drift = Math.hypot(posterCenter.x - lastCenter.x, posterCenter.y - lastCenter.y) / Math.max(dt, 1e-3);
+    lastCenter.set(posterCenter.x, posterCenter.y);
+    updateScene(renderNow / 1000, dt, sceneAge, renderNow - lastSeen < LOCK_MS && drift < STILL_NDC);
     scene.updateMatrixWorld();
 
     const hand = fakeHand !== undefined ? fakeHand : hands?.update(renderNow) ?? null;
@@ -316,6 +390,7 @@ async function frame(_, { captureTime, presentationTime }) {
     ui.setStatus(seen, trackingError || (searching ? 'PLAKAT SUCHEN' : ''));
     frameStats.n++;
     frameStats.total += performance.now() - t0;
+    adaptResolution(performance.now() - t0, renderNow);
   } catch (error) {
     if (snapshots) disableSnapshots(error);
     else {
@@ -341,6 +416,7 @@ ui.initLabels(labels, (id) => trigger(entries.find((e) => e.id === id)));
 globalThis.__ar = {
   setHand: (h) => { fakeHand = h; },
   frameMs: () => frameStats.total / Math.max(frameStats.n, 1),
+  pixelRatio: () => renderer.getPixelRatio(),
   timing: () => lastFrameTiming,
   selected: () => selectedEntry()?.id ?? null,
   objects: () => entries.map((e) => {
@@ -376,7 +452,7 @@ async function startHands() {
     return;
   }
   try {
-    const { createHands } = await import('./hands.js');
+    const { createHands } = await import('./hands.js?v=2');
     hands = await createHands(video);
     ui.setHint(hands
       ? 'Öffne deine Hand über einem Gegenstand und schließe sie dann zur Faust.'
